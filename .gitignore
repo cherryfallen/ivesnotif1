@@ -26,3 +26,8 @@
 *.exe
 *.out
 *.app
+
+Debug/
+ipch/
+Demo_ClipView_VC/Debug/
+Demo_ClipView_VC.sdf
