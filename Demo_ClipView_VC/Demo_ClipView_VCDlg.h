@@ -90,7 +90,7 @@ private:
 	vector<IntersectPoint> intersectPoint;
 
 	void dealConvex();
-	void dealNConvex();
+	void dealConcave();
 
 	void ClearTestLines();
 
