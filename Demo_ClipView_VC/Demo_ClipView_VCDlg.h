@@ -90,7 +90,7 @@ private:
 	vector<IntersectPoint> intersectPoint;
 
 	void dealConvex();
-	void dealConcave();
+	void dealNConvex();
 
 	void ClearTestLines();
 
@@ -100,6 +100,6 @@ private:
 	bool isPointInBoundary(CPoint&);
 	CPoint getMiddlePoint(vector<r_lineNum>&,int,int);
 	double getAngle(long,long,long,long,double);
-	void ClearPartialTestCaseData();
+	//void ClearPartialTestCaseData();
 	void forCircleRun();
 };
