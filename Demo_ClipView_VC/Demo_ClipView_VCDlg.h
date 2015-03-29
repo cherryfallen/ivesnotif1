@@ -85,9 +85,9 @@ public:
 
 private:
 	void JudgeConvexPoint();
-	vector<BOOL> convexPoint;
-	vector<RECT> edgeRect;
-	vector<IntersectPoint> intersectPoint;
+	vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
+	vector<RECT> edgeRect;//多边形的边的外矩形框
+	vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
 
 	void dealConvex();
 	void dealConcave();

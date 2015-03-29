@@ -348,41 +348,6 @@ void CDemo_ClipView_VCDlg::dealConvex()
 //////////////////////////////////
 // DQC's codes begin
 
-//判断每个点是凹点还是凸点
-void CDemo_ClipView_VCDlg::JudgeConvexPoint()
-{
-	int dotnum=boundary.vertexs.size()-1;
-	vector<int> z;
-	int max=-1,maxnum=-1;
-	for (int i=0;i<dotnum;i++)
-	{
-		CPoint* p1;
-		if (i==0)
-			p1=&boundary.vertexs[dotnum-1];
-		else
-			p1=&boundary.vertexs[i-1];
-		CPoint* p2=&boundary.vertexs[i];
-		CPoint* p3=&boundary.vertexs[i+1];
-		int ux=p2->x-p1->x;
-		int uy=p2->y-p1->y;
-		int vx=p3->x-p2->x;
-		int vy=p3->y-p2->y;
-		z.push_back(ux*vy-uy*vx);
-		if (p2->x>max)
-		{
-			max=p2->x;
-			maxnum=i;
-		}
-	}
-
-	for (int i=0;i<dotnum;i++)
-		if ((z[maxnum]>0 && z[i]>0)||(z[maxnum]<0 && z[i]<0))
-			convexPoint.push_back(true);
-		else
-			convexPoint.push_back(false);
-	convexPoint.push_back(convexPoint[0]);
-}
-
 int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 {
 	int ux=a2.x-a1.x;
@@ -391,6 +356,7 @@ int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 	int vy=b2.y-b1.y;
 	return ux*vy-uy*vx;
 }
+
 bool Compare(IntersectPoint a,IntersectPoint b)
 {
 	if (a.t<b.t)
@@ -399,13 +365,63 @@ bool Compare(IntersectPoint a,IntersectPoint b)
 		return false;
 }
 
+/*
+	功能：判断多边形每个点是凹点还是凸点
+	思路：求相邻两边的向量的叉积，已知凸点的值与凹点的值正负性不同，并且x坐标最大的点一定是凸点。
+		  先计算相邻两边的向量的叉积并保存，同时找出x最大的点。再通过与x最大的点比较正负性得出点的凹凸性。
+*/
+void CDemo_ClipView_VCDlg::JudgeConvexPoint()
+{
+	int dotnum=boundary.vertexs.size()-1;//多边形顶点数
+	vector<int> z;
+	int max=-1,maxnum=-1;
+	for (int i=0;i<dotnum;i++)
+	{
+		//当前点为p2,其前一点为p1,后一点为p3
+		CPoint* p1;
+		if (i==0)
+			p1=&boundary.vertexs[dotnum-1];
+		else
+			p1=&boundary.vertexs[i-1];
+		CPoint* p2=&boundary.vertexs[i];
+		CPoint* p3=&boundary.vertexs[i+1];
+		int crossmulti=CrossMulti(*p1,*p2,*p2,*p3);//计算相邻两条边的叉积（即p1p2与p2p3）
+
+		z.push_back(crossmulti);
+		if (p2->x>max)//找出x最大的点，记录
+		{
+			max=p2->x;
+			maxnum=i;
+		}
+	}
+
+	//通过与x最大的点比较正负性得出点的凹凸性。
+	for (int i=0;i<dotnum;i++)  
+		if ((z[maxnum]>0 && z[i]>0)||(z[maxnum]<0 && z[i]<0))
+			convexPoint.push_back(true);
+		else
+			convexPoint.push_back(false);
+	convexPoint.push_back(convexPoint[0]);
+}
+
+
+
+/*
+	函数：处理凸多边形的裁剪
+	思路：先预处理判断出每个点的凹凸性，算出所有多边形的边的外矩形框。
+		  然后枚举每条线段与每条多边形的边，先通过快速排除法排除明显不可能相交的边，再通过跨立试验进一步判断是否有交点。
+		  接着用改进的cyrus-beck算法算出交点的值，以及交点的性质（出点还是入点），并将线段的起点作为入点，终点作为出点。
+		  然后处理当线段与多边形的顶点相交的特殊情况。
+		  最后寻找所有符合“入点-出点”的线段作为显示的线段。
+*/
 void CDemo_ClipView_VCDlg::dealConcave()
 {
 	//TODO 在此处完成裁剪算法和裁剪后显示程序
 	COLORREF clrLine = RGB(0,255,0);
+
 	JudgeConvexPoint();
 
-	//先算出所有多边形的边的矩形框
+	//先算出所有多边形的边的外矩形框
 	int edgenum=boundary.vertexs.size()-1;
 	for (int i=0;i<edgenum;i++)
 	{
@@ -429,11 +445,11 @@ void CDemo_ClipView_VCDlg::dealConcave()
 		r.right=max(lines[i].startpoint.x,lines[i].endpoint.x);
 
 		//将线段起点当作入点放在首位
+		intersectPoint.clear();
 		IntersectPoint ip1;
 		ip1.isIntoPoly=true;
 		ip1.t=0;
 		ip1.point=lines[i].startpoint;
-		intersectPoint.clear();
 		intersectPoint.push_back(ip1);
 
 		BOOL haveIntersect=false;
@@ -453,16 +469,17 @@ void CDemo_ClipView_VCDlg::dealConcave()
 
 			long long a= ((long long)CrossMulti(p1,q1,p1,p2)) * (CrossMulti(p1,p2,p1,q2));
 			long long b= ((long long)CrossMulti(q1,p1,q1,q2)) * (CrossMulti(q1,q2,q1,p2));
-			if (!(a>=0 && b>=0))
+			if (!(a>=0 && b>=0))//不相交就跳过这条边
 				continue;
 
 			//求内法向量
-			CPoint p0;
+			CPoint p0;//p0为p1前面一个顶点
 			if (j==0)
 				p0=boundary.vertexs[edgenum-1];
 			else
 				p0=boundary.vertexs[j-1];
 			double n1,n2;
+			//先任意算出一个法向量
 			if (p2.y-p1.y==0)
 			{
 				n2=1;
@@ -473,12 +490,12 @@ void CDemo_ClipView_VCDlg::dealConcave()
 				n1=1;
 				n2=-(double)(p2.x-p1.x)/(p2.y-p1.y);
 			}
-			if ((p1.x-p0.x)*n1+(p1.y-p0.y)*n2>0)//法向量反向
+			if ((p1.x-p0.x)*n1+(p1.y-p0.y)*n2>0)//与前一条边点乘，如果方向错了，使法向量反向
 			{
 				n1=-n1;
 				n2=-n2;
 			}
-			if (!convexPoint[j])//如果是凹点法向量反向
+			if (!convexPoint[j])//如果是凹点，法向量再反向
 			{
 				n1=-n1;
 				n2=-n2;
@@ -528,7 +545,7 @@ void CDemo_ClipView_VCDlg::dealConcave()
 
 		std::sort(intersectPoint.begin()+1,intersectPoint.end()-1,Compare);//按t从小到大排序
 
-		//如果有两点t值相同（即是同一点），根据点的凹凸性重新安排入、出
+		//如果有两点t值相同（即线段与多边形的顶点相交的特殊情况），并且一个是入点，一个是出点，则根据顶点的凹凸性重新安排入、出
 		vector<IntersectPoint>::iterator iter = intersectPoint.begin();
 		iter++;
 		for (;iter!= intersectPoint.end()&&(iter+1)!= intersectPoint.end()&&(iter+2)!= intersectPoint.end();iter++ )
@@ -549,7 +566,7 @@ void CDemo_ClipView_VCDlg::dealConcave()
 			}
 
 
-		//以下为暂时的绘图代码
+		//以下为绘图代码
 		int size=(int)intersectPoint.size()-1;
 		for (int i=0;i<size;i++)
 		{
@@ -562,7 +579,7 @@ void CDemo_ClipView_VCDlg::dealConcave()
 				i++;
 			}
 		}
-		//以上为暂时的绘图代码
+		//以上为绘图代码
 	}
 
 }
