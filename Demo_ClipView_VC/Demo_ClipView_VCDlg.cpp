@@ -5,23 +5,15 @@
 #include "Demo_ClipView_VC.h"
 #include "Demo_ClipView_VCDlg.h"
 #include "afxdialogex.h"
+using namespace std;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
 #define PI 3.141592653
-#define max(a,b) ((a>b)?a:b)
-#define min(a,b) ((a<b)?a:b)
-
-using namespace std;
-
-//裁剪算法相关定义
-const int INTIALIZE=0;
-const double ESP=1e-5;
-
-
-
+//#define max(a,b) ((a>b)?a:b)
+//#define min(a,b) ((a<b)?a:b)
 
 // CDemo_ClipView_VCDlg 对话框
 
@@ -31,196 +23,55 @@ const double ESP=1e-5;
 #define TESTDATA_XML1  "TestData1.xml"
 #define TESTDATA_XML2  "TestData2.xml"
 
+//裁剪算法相关定义
+const int INTIALIZE=0;
+const double ESP=1e-5;
 
-CDemo_ClipView_VCDlg::CDemo_ClipView_VCDlg(CWnd* pParent /*=NULL*/)
-	: CDialogEx(CDemo_ClipView_VCDlg::IDD, pParent)
+
+
+
+///////////////////////////////////////
+// main part begins
+
+
+void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
-	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
-}
+	//以下为暂时的绘图代码
+	CClientDC dc(this);
+	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 
-void CDemo_ClipView_VCDlg::DoDataExchange(CDataExchange* pDX)
-{
-	CDialogEx::DoDataExchange(pDX);
-	DDX_Control(pDX, IDC_BTN_CLIP, m_btn_clip);
-	DDX_Control(pDX, IDC_STATIC_DRAWING, m_stc_drawing);
-	DDX_Control(pDX, IDC_STATIC_INFO_1, m_stc_info1);
-	DDX_Control(pDX, IDC_STATIC_INFO_2, m_stc_info2);
-}
+	COLORREF clrBoundary = RGB(255,0,0);
+	DrawBoundary(boundary, clrBoundary);
 
-BEGIN_MESSAGE_MAP(CDemo_ClipView_VCDlg, CDialogEx)
-	ON_WM_PAINT()
-	ON_WM_QUERYDRAGICON()
-	ON_BN_CLICKED(IDC_BTN_CLIP, &CDemo_ClipView_VCDlg::OnBnClickedBtnClip)
-	ON_WM_NCLBUTTONDOWN()
-END_MESSAGE_MAP()
+	COLORREF clrLine = RGB(0,255,0);
+	//以上为暂时的绘图代码
 
 
-BOOL CDemo_ClipView_VCDlg::OnInitDialog()
-{
-	CDialogEx::OnInitDialog();
+	BeginTimeAndMemoryMonitor();
 
-	// 设置此对话框的图标。当应用程序主窗口不是对话框时，框架将自动
-	//  执行此操作
-	SetIcon(m_hIcon, TRUE);			// 设置大图标
-	SetIcon(m_hIcon, FALSE);		// 设置小图标
-	CRect clientRect;
-	GetClientRect(&clientRect);
-	CRect windowRect;
-	GetWindowRect(&windowRect);
-	int width = CANVAS_WIDTH + windowRect.Width() - clientRect.Width();
-	int height = CANVAS_HEIGHT + INFO_HEIGHT + windowRect.Height() - clientRect.Height();
-	SetWindowPos(NULL, 0, 0, width, height, SWP_NOMOVE|SWP_NOZORDER);
-
-	m_btn_clip.SetWindowPos(NULL, 50, CANVAS_HEIGHT + 10, 80, 30, SWP_NOZORDER);
-	m_stc_drawing.SetWindowPos(NULL, 140, CANVAS_HEIGHT + 15, 200, 20, SWP_NOZORDER);
-	m_stc_info1.SetWindowPos(NULL, 350, CANVAS_HEIGHT + 5, 450, 20, SWP_NOZORDER);
-	m_stc_info2.SetWindowPos(NULL, 350, CANVAS_HEIGHT + 25, 450, 20, SWP_NOZORDER);
-
-	hasOutCanvasData = FALSE;
-	GetModuleFileName(NULL,curPath.GetBufferSetLength(MAX_PATH + 1), MAX_PATH);
-	curPath.ReleaseBuffer();
-	curPath = curPath.Left(curPath.ReverseFind('\\') + 1);
-
-	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
-}
-
-void CDemo_ClipView_VCDlg::OnPaint()
-{
-
-	if (IsIconic())
-	{
-		CPaintDC dc(this); // 用于绘制的设备上下文
-
-		SendMessage(WM_ICONERASEBKGND, reinterpret_cast<WPARAM>(dc.GetSafeHdc()), 0);
-
-		// 使图标在工作区矩形中居中
-		int cxIcon = GetSystemMetrics(SM_CXICON);
-		int cyIcon = GetSystemMetrics(SM_CYICON);
-		CRect rect;
-		GetClientRect(&rect);
-		int x = (rect.Width() - cxIcon + 1) / 2;
-		int y = (rect.Height() - cyIcon + 1) / 2;
-
-		// 绘制图标
-		dc.DrawIcon(x, y, m_hIcon);
-	}
+	if (boundary.isConvex)
+		dealConvex();
 	else
-	{
-		CDialogEx::OnPaint();
-	}
+		dealConcave();
+
+	forCircleRun();
+
+	EndTimeAndMemoryMonitor();
 }
 
-HCURSOR CDemo_ClipView_VCDlg::OnQueryDragIcon()
-{
-	return static_cast<HCURSOR>(m_hIcon);
-}
-
-BOOL CDemo_ClipView_VCDlg::OnCommand(WPARAM wParam, LPARAM lParam)
-{
-	UINT uMsg=LOWORD(wParam);
-	switch(uMsg)
-	{
-	case ID_TESTCASE1:
-		{
-			CString xmlPath = curPath + TESTDATA_XML1;
-			DrawTestCase(xmlPath, "1");
-		}
-		break;
-	case ID_TESTCASE2:
-		{
-			CString xmlPath = curPath + TESTDATA_XML1;
-			DrawTestCase(xmlPath, "2");
-		}
-		break;
-	case ID_TESTCASE3:
-		{
-			CString xmlPath = curPath + TESTDATA_XML1;
-			DrawTestCase(xmlPath, "3");
-		}
-		break;
-	case ID_TESTCASE4:
-		{
-			CString xmlPath = curPath + TESTDATA_XML1;
-			DrawTestCase(xmlPath, "4");
-		}
-		break;
-	case ID_TESTCASE5:
-		{
-			CString xmlPath = curPath + TESTDATA_XML2;
-			DrawTestCase(xmlPath, "5");
-		}
-		break;
-	default:
-		break;
-	}
-	return CDialogEx::OnCommand(wParam, lParam);
-}
-
-void CDemo_ClipView_VCDlg::OnNcLButtonDown(UINT nHitTest, CPoint point)
-{
-	if (HTCAPTION == nHitTest) {
-		return;
-	}
-	CDialogEx::OnNcLButtonDown(nHitTest, point);
-}
+// main part ends
+/////////////////////////////////////////
 
 
 
 
-//判断每个点是凹点还是凸点
-void CDemo_ClipView_VCDlg::JudgeConvexPoint()
-{
-	int dotnum=boundary.vertexs.size()-1;
-	vector<int> z;
-	int max=-1,maxnum=-1;
-	for (int i=0;i<dotnum;i++)
-	{
-		CPoint* p1;
-		if (i==0)
-			p1=&boundary.vertexs[dotnum-1];
-		else
-			p1=&boundary.vertexs[i-1];
-		CPoint* p2=&boundary.vertexs[i];
-		CPoint* p3=&boundary.vertexs[i+1];
-		int ux=p2->x-p1->x;
-		int uy=p2->y-p1->y;
-		int vx=p3->x-p2->x;
-		int vy=p3->y-p2->y;
-		z.push_back(ux*vy-uy*vx);
-		if (p2->x>max)
-		{
-			max=p2->x;
-			maxnum=i;
-		}
-	}
 
-	for (int i=0;i<dotnum;i++)
-		if ((z[maxnum]>0 && z[i]>0)||(z[maxnum]<0 && z[i]<0))
-			convexPoint.push_back(true);
-		else
-			convexPoint.push_back(false);
-	convexPoint.push_back(convexPoint[0]);
-}
-
-int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
-{
-	int ux=a2.x-a1.x;
-	int uy=a2.y-a1.y;
-	int vx=b2.x-b1.x;
-	int vy=b2.y-b1.y;
-	return ux*vy-uy*vx;
-}
-bool Compare(IntersectPoint a,IntersectPoint b)
-{
-	if (a.t<b.t)
-		return true;
-	else
-		return false;
-}
+//Tip: You can use Ctrl+F to search one of the following words to get to your codes quickly:   GS   XH   DQC
 
 
+//////////////////////////////////
+// GS's codes begin
 
-////////////////////////////////////////////////
 
 //判断线段是否在包围盒里
 bool InBox(Boundary & boundary,Line line){
@@ -438,13 +289,8 @@ void CDemo_ClipView_VCDlg::ClearTestLines()
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 }
 
-
-////////////////////////////
-
-
 void CDemo_ClipView_VCDlg::dealConvex()
 {
-	BeginTimeAndMemoryMonitor();
 
 	//TODO 在此处完成裁剪算法和裁剪后显示程序
 	vector<Line> result_lines;
@@ -467,12 +313,12 @@ void CDemo_ClipView_VCDlg::dealConvex()
 		}*/
 	}
 
-	EndTimeAndMemoryMonitor();
+	//EndTimeAndMemoryMonitor();
 
 	ClearTestLines();
 
-	COLORREF clrBoundary = RGB(255,0,0);
-	DrawBoundary(boundary,clrBoundary);
+	//COLORREF clrBoundary = RGB(255,0,0);
+	//DrawBoundary(boundary,clrBoundary);
 
 	COLORREF clrLine = RGB(0,255,0);
 	//int nResultLines=result_lines.size();
@@ -483,32 +329,82 @@ void CDemo_ClipView_VCDlg::dealConvex()
 	}
 
 }
+
+// GS's codes end
+/////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	
+//////////////////////////////////
+// DQC's codes begin
 
-///main
-void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
+//判断每个点是凹点还是凸点
+void CDemo_ClipView_VCDlg::JudgeConvexPoint()
 {
-
-	if (boundary.isConvex)
+	int dotnum=boundary.vertexs.size()-1;
+	vector<int> z;
+	int max=-1,maxnum=-1;
+	for (int i=0;i<dotnum;i++)
 	{
-		dealConvex();
-		return;
+		CPoint* p1;
+		if (i==0)
+			p1=&boundary.vertexs[dotnum-1];
+		else
+			p1=&boundary.vertexs[i-1];
+		CPoint* p2=&boundary.vertexs[i];
+		CPoint* p3=&boundary.vertexs[i+1];
+		int ux=p2->x-p1->x;
+		int uy=p2->y-p1->y;
+		int vx=p3->x-p2->x;
+		int vy=p3->y-p2->y;
+		z.push_back(ux*vy-uy*vx);
+		if (p2->x>max)
+		{
+			max=p2->x;
+			maxnum=i;
+		}
 	}
 
-	//以下为暂时的绘图代码
-	CClientDC dc(this);
-	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
+	for (int i=0;i<dotnum;i++)
+		if ((z[maxnum]>0 && z[i]>0)||(z[maxnum]<0 && z[i]<0))
+			convexPoint.push_back(true);
+		else
+			convexPoint.push_back(false);
+	convexPoint.push_back(convexPoint[0]);
+}
 
-	COLORREF clrBoundary = RGB(255,0,0);
-	DrawBoundary(boundary, clrBoundary);
+int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
+{
+	int ux=a2.x-a1.x;
+	int uy=a2.y-a1.y;
+	int vx=b2.x-b1.x;
+	int vy=b2.y-b1.y;
+	return ux*vy-uy*vx;
+}
+bool Compare(IntersectPoint a,IntersectPoint b)
+{
+	if (a.t<b.t)
+		return true;
+	else
+		return false;
+}
 
-	COLORREF clrLine = RGB(0,255,0);
-	//以上为暂时的绘图代码
-
-
-	BeginTimeAndMemoryMonitor();
+void CDemo_ClipView_VCDlg::dealConcave()
+{
 	//TODO 在此处完成裁剪算法和裁剪后显示程序
-
+	COLORREF clrLine = RGB(0,255,0);
 	JudgeConvexPoint();
 
 	//先算出所有多边形的边的矩形框
@@ -631,6 +527,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		ip2.point=lines[i].endpoint;
 		intersectPoint.push_back(ip2);
 
+
 		std::sort(intersectPoint.begin()+1,intersectPoint.end()-1,Compare);//按t从小到大排序
 
 		//如果有两点t值相同（即是同一点），根据点的凹凸性重新安排入、出
@@ -670,31 +567,31 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		//以上为暂时的绘图代码
 	}
 
-
-
-	forCircleRun();
-
-	EndTimeAndMemoryMonitor();
 }
 
-
-/////////////////////////////////////////
-
-
+// DQC's codes end
+/////////////////////////////////
 
 
+
+
+
+
+
+
+
+
+
+
+
+//////////////////////////////////
+// XH's codes begin
 
 void  CDemo_ClipView_VCDlg::forCircleRun()
 {
 	//ClearPartialTestCaseData();
 	//COLORREF clrBoundary = RGB(255,0,0);
 	//DrawBoundary(boundary,clrBoundary);
-	CPen penUse;
-	COLORREF clrCircle = RGB(0,0,255);	
-    penUse.CreatePen(PS_SOLID, 1, clrCircle);
-	CClientDC dc(this);
-	dc.SelectObject(&penUse);
-
 	for(unsigned int i = 0;i<circles.size();i++){
 	    vector<r_lineNum> point_Array;
 		getInterpointArray(point_Array,i);
@@ -992,11 +889,153 @@ void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int
 
 
 
+// XH's codes end
+/////////////////////////////////
 
 
-/////////////////////////////////////////
 
 
+
+
+
+
+
+
+
+
+
+
+CDemo_ClipView_VCDlg::CDemo_ClipView_VCDlg(CWnd* pParent /*=NULL*/)
+	: CDialogEx(CDemo_ClipView_VCDlg::IDD, pParent)
+{
+	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+}
+
+void CDemo_ClipView_VCDlg::DoDataExchange(CDataExchange* pDX)
+{
+	CDialogEx::DoDataExchange(pDX);
+	DDX_Control(pDX, IDC_BTN_CLIP, m_btn_clip);
+	DDX_Control(pDX, IDC_STATIC_DRAWING, m_stc_drawing);
+	DDX_Control(pDX, IDC_STATIC_INFO_1, m_stc_info1);
+	DDX_Control(pDX, IDC_STATIC_INFO_2, m_stc_info2);
+}
+
+BEGIN_MESSAGE_MAP(CDemo_ClipView_VCDlg, CDialogEx)
+	ON_WM_PAINT()
+	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_BTN_CLIP, &CDemo_ClipView_VCDlg::OnBnClickedBtnClip)
+	ON_WM_NCLBUTTONDOWN()
+END_MESSAGE_MAP()
+
+
+BOOL CDemo_ClipView_VCDlg::OnInitDialog()
+{
+	CDialogEx::OnInitDialog();
+
+	// 设置此对话框的图标。当应用程序主窗口不是对话框时，框架将自动
+	//  执行此操作
+	SetIcon(m_hIcon, TRUE);			// 设置大图标
+	SetIcon(m_hIcon, FALSE);		// 设置小图标
+	CRect clientRect;
+	GetClientRect(&clientRect);
+	CRect windowRect;
+	GetWindowRect(&windowRect);
+	int width = CANVAS_WIDTH + windowRect.Width() - clientRect.Width();
+	int height = CANVAS_HEIGHT + INFO_HEIGHT + windowRect.Height() - clientRect.Height();
+	SetWindowPos(NULL, 0, 0, width, height, SWP_NOMOVE|SWP_NOZORDER);
+
+	m_btn_clip.SetWindowPos(NULL, 50, CANVAS_HEIGHT + 10, 80, 30, SWP_NOZORDER);
+	m_stc_drawing.SetWindowPos(NULL, 140, CANVAS_HEIGHT + 15, 200, 20, SWP_NOZORDER);
+	m_stc_info1.SetWindowPos(NULL, 350, CANVAS_HEIGHT + 5, 450, 20, SWP_NOZORDER);
+	m_stc_info2.SetWindowPos(NULL, 350, CANVAS_HEIGHT + 25, 450, 20, SWP_NOZORDER);
+
+	hasOutCanvasData = FALSE;
+	GetModuleFileName(NULL,curPath.GetBufferSetLength(MAX_PATH + 1), MAX_PATH);
+	curPath.ReleaseBuffer();
+	curPath = curPath.Left(curPath.ReverseFind('\\') + 1);
+
+	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
+}
+
+void CDemo_ClipView_VCDlg::OnPaint()
+{
+
+	if (IsIconic())
+	{
+		CPaintDC dc(this); // 用于绘制的设备上下文
+
+		SendMessage(WM_ICONERASEBKGND, reinterpret_cast<WPARAM>(dc.GetSafeHdc()), 0);
+
+		// 使图标在工作区矩形中居中
+		int cxIcon = GetSystemMetrics(SM_CXICON);
+		int cyIcon = GetSystemMetrics(SM_CYICON);
+		CRect rect;
+		GetClientRect(&rect);
+		int x = (rect.Width() - cxIcon + 1) / 2;
+		int y = (rect.Height() - cyIcon + 1) / 2;
+
+		// 绘制图标
+		dc.DrawIcon(x, y, m_hIcon);
+	}
+	else
+	{
+		CDialogEx::OnPaint();
+	}
+}
+
+HCURSOR CDemo_ClipView_VCDlg::OnQueryDragIcon()
+{
+	return static_cast<HCURSOR>(m_hIcon);
+}
+
+BOOL CDemo_ClipView_VCDlg::OnCommand(WPARAM wParam, LPARAM lParam)
+{
+	UINT uMsg=LOWORD(wParam);
+	switch(uMsg)
+	{
+	case ID_TESTCASE1:
+		{
+			CString xmlPath = curPath + TESTDATA_XML1;
+			DrawTestCase(xmlPath, "1");
+		}
+		break;
+	case ID_TESTCASE2:
+		{
+			CString xmlPath = curPath + TESTDATA_XML1;
+			DrawTestCase(xmlPath, "2");
+		}
+		break;
+	case ID_TESTCASE3:
+		{
+			CString xmlPath = curPath + TESTDATA_XML1;
+			DrawTestCase(xmlPath, "3");
+		}
+		break;
+	case ID_TESTCASE4:
+		{
+			CString xmlPath = curPath + TESTDATA_XML1;
+			DrawTestCase(xmlPath, "4");
+		}
+		break;
+	case ID_TESTCASE5:
+		{
+			CString xmlPath = curPath + TESTDATA_XML2;
+			DrawTestCase(xmlPath, "5");
+		}
+		break;
+	default:
+		break;
+	}
+	return CDialogEx::OnCommand(wParam, lParam);
+}
+
+void CDemo_ClipView_VCDlg::OnNcLButtonDown(UINT nHitTest, CPoint point)
+{
+	if (HTCAPTION == nHitTest) {
+		return;
+	}
+	CDialogEx::OnNcLButtonDown(nHitTest, point);
+}
 
 
 
