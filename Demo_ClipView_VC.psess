@@ -69,19 +69,10 @@
   </Binaries>
   <Reports>
     <Report>
-      <Path>Demo_ClipView_VC150324.vsp</Path>
+      <Path>Demo_ClipView_VC150329.vsp</Path>
     </Report>
     <Report>
-      <Path>Demo_ClipView_VC150324(1).vsp</Path>
-    </Report>
-    <Report>
-      <Path>Demo_ClipView_VC150324(2).vsp</Path>
-    </Report>
-    <Report>
-      <Path>Demo_ClipView_VC150324(3).vsp</Path>
-    </Report>
-    <Report>
-      <Path>Demo_ClipView_VC150324(4).vsp</Path>
+      <Path>Demo_ClipView_VC150330.vsp</Path>
     </Report>
   </Reports>
   <Launches>

@@ -1,4 +1,4 @@
-﻿
+﻿//aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 // Demo_ClipView_VCDlg.cpp : 实现文件
 //
 #include "stdafx.h"
@@ -27,7 +27,6 @@ const int INTIALIZE=0;
 const double ESP=1e-5;
 
 
-///////////////////////////////////////
 // main part begins
 
 
