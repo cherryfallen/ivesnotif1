@@ -6,18 +6,17 @@
 #include "Demo_ClipView_VCDlg.h"
 #include "afxdialogex.h"
 using namespace std;
-
+//bbbbbbbbbbbbbbbbbbbbbbbbbb
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
 #define PI 3.141592653
-//#define max(a,b) ((a>b)?a:b)
 //#define min(a,b) ((a<b)?a:b)
 
 // CDemo_ClipView_VCDlg 对话框
 
-#define CANVAS_WIDTH	800
+#define CANVAS_WIDTH	300
 #define CANVAS_HEIGHT	600
 #define INFO_HEIGHT		50
 #define TESTDATA_XML1  "TestData1.xml"
