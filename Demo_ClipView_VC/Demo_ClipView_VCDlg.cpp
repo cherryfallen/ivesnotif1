@@ -21,6 +21,9 @@ using namespace std;
 #define TESTDATA_XML1  "TestData1.xml"
 #define TESTDATA_XML2  "TestData2.xml"
 
+//如果为0，将不载入也不处理，以方便测试性能
+#define TEST_LINES 1
+#define TEST_CIRCLES 0
 //裁剪算法相关定义
 const int INTIALIZE=0;
 const double ESP=1e-5;
@@ -45,12 +48,15 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	BeginTimeAndMemoryMonitor();
 
-	if (boundary.isConvex)
-		dealConvex();
-	else
-		dealConcave();
-
-	forCircleRun();
+	if (TEST_LINES)
+	{
+		if (boundary.isConvex)
+			dealConvex();
+		else
+			dealConcave();
+	}
+	if (TEST_CIRCLES)
+		forCircleRun();
 
 	EndTimeAndMemoryMonitor();
 }
@@ -288,7 +294,11 @@ void CDemo_ClipView_VCDlg::dealConvex()
 //////////////////////////////////
 // DQC's codes begin
 
-int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
+/*
+	功能：计算两个向量的叉积
+	参数：a1,a2为第一个向量的起点与终点，b1,b2为第二个向量的起点与终点
+*/
+int CDemo_ClipView_VCDlg::CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 {
 	int ux=a2.x-a1.x;
 	int uy=a2.y-a1.y;
@@ -297,6 +307,10 @@ int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 	return ux*vy-uy*vx;
 }
 
+/*
+	功能：用于交点排序的比较函数（按t值得从小到大排序）
+	参数：a,b分别为两个交点
+*/
 bool Compare(IntersectPoint a,IntersectPoint b)
 {
 	if (a.t<b.t)
@@ -374,7 +388,6 @@ void CDemo_ClipView_VCDlg::dealConcave()
 	}
 
 
-
 	int linenum=lines.size();
 	RECT r;
 	for (int i=0;i<linenum;i++)//枚举每条线段
@@ -449,7 +462,7 @@ void CDemo_ClipView_VCDlg::dealConcave()
 			CPoint pt;
 			pt.x=(LONG)((q2.x-q1.x)*t+q1.x);
 			pt.y=(LONG)((q2.y-q1.y)*t+q1.y);
-			if (t>=0 && t<=1)
+			if (t>=0 && t<=1) //如果算出的参数t满足 t>=0 && t<=1, 说明交点在线段上，将它加入交点集
 			{
 				IntersectPoint ip;
 				if (t1>0)
@@ -471,9 +484,13 @@ void CDemo_ClipView_VCDlg::dealConcave()
 		}
 
 		
-		//没有交点，则跳过
+		//没有交点
 		if (!haveIntersect)
+		{
+			if (isPointInBoundary(lines[i].startpoint))//如果在多边形内
+				DrawLine(lines[i],clrLine);
 			continue;
+		}
 
 		//将线段终点当作出点放在末位
 		IntersectPoint ip2;
@@ -1133,7 +1150,7 @@ BOOL CDemo_ClipView_VCDlg::LoadTestCaseData(CString xmlPath, CString caseID)
 	{
 		pugi::xml_attribute type = entity.attribute("Type");
 		CString typeValue(type.value());
-		if (typeValue.CompareNoCase("Line") == 0)
+		if (TEST_LINES && typeValue.CompareNoCase("Line") == 0) //如果TEST_LINES == 0，不执行载入操作
 		{
 			Line line;
 			pugi::xml_node startNode = entity.child("StartPoint");
@@ -1147,7 +1164,7 @@ BOOL CDemo_ClipView_VCDlg::LoadTestCaseData(CString xmlPath, CString caseID)
 			}
 			lines.push_back(line);
 		} 
-		else if(typeValue.CompareNoCase("Circle") == 0)
+		else if(TEST_CIRCLES && typeValue.CompareNoCase("Circle") == 0) //如果TEST_CIRCLES == 0，不执行载入操作
 		{
 			Circle circle;
 			pugi::xml_node centerNode = entity.child("CenterPoint");
