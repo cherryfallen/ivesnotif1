@@ -594,38 +594,39 @@ void  CDemo_ClipView_VCDlg::forCircleRun()
     penUse.CreatePen(PS_SOLID, 1, clrCircle);
 	CClientDC dc(this);
 	dc.SelectObject(&penUse);
-	//ClearPartialTestCaseData();
-	//COLORREF clrBoundary = RGB(255,0,0);
-	//DrawBoundary(boundary,clrBoundary);
-	for(unsigned int i = 0;i<circles.size();i++){
-	    vector<r_lineNum> point_Array;
-		getInterpointArray(point_Array,i);
+	//初始化画笔结束
+	
+	for(unsigned int i = 0;i<circles.size();i++){  //再次开始遍历每一个圆
+	    vector<r_lineNum> point_Array;   //用于存储每个圆与多边形窗口的交点
+		getInterpointArray(point_Array,i);  //获得存储交点的容器
 		
-		if(point_Array.size()==0||point_Array.size()==1)
+		if(point_Array.size()==0||point_Array.size()==1) //将完全跟多边形不相交以及相切的情况的圆排除，
 		{
-			bool inBoundary = isPointInBoundary(circles[i].center);
+			bool inBoundary = isPointInBoundary(circles[i].center); //圆心若在多边形内
 			if (inBoundary==true)
 			{
 				long _x = boundary.vertexs[0].x-circles[i].center.x;
 				long _y = boundary.vertexs[0].y-circles[i].center.y;
 				bool t = (_x*_x+_y*_y)>(circles[i].radius*circles[i].radius);
-				if (t==true)
+				if (t==true)   //若圆的半径比较小
 				{
 					//画整个圆
 					dc.Arc(circles[i].center.x - circles[i].radius, circles[i].center.y - circles[i].radius, circles[i].center.x + circles[i].radius, circles[i].center.y + circles[i].radius, 0, 0, 0, 0);
 				}
-				else
+				else   //若圆的半径比较大
 				{
 					//什么都不画
 					continue;
 				}
 			}
 		}
-		//没有交点的情况讨论完毕
+		//没有交点以及相切的情况讨论完毕
+		//开始讨论一般的情况
 		else
 		{
 			
-			point_Array.push_back(point_Array[0]);
+			point_Array.push_back(point_Array[0]); //为了便于讨论和计算，在整个交点容器的最后加入第一个交点
+			//当圆刚好过多边形的某一点时，会出现该点被记录两次的情况，故需要进行排除
 			for (int j = 0; j < point_Array.size()-1; j++)
 			{
 				if (point_Array[j].point.x ==point_Array[j+1].point.x&&point_Array[j].point.y ==point_Array[j+1].point.y)
@@ -634,11 +635,12 @@ void  CDemo_ClipView_VCDlg::forCircleRun()
 					j--;
 				}
 			}
+			//开始对交点容器中的每一个交点进行遍历
 			for (unsigned int j = 0; j < point_Array.size()-1; j++)
 			{
-				CPoint mid_point = getMiddlePoint(point_Array,i,j);
-				bool mid_in_bound = isPointInBoundary(mid_point);
-				if(mid_in_bound == true)
+				CPoint mid_point = getMiddlePoint(point_Array,i,j); //获得两交点的在圆上的中间点
+				bool mid_in_bound = isPointInBoundary(mid_point);  //判断中间点是否在多边形窗口内
+				if(mid_in_bound == true) //在多边形窗口内，则画整个圆弧
 				{				
 					int start_x = circles[i].center.x-circles[i].radius;
 					int start_y = circles[i].center.y-circles[i].radius;
@@ -649,9 +651,9 @@ void  CDemo_ClipView_VCDlg::forCircleRun()
 					dc.Arc(&rect,point_Array[j].point,point_Array[j+1].point);
 
 				}
-				else
+				else//在多边形窗口外
 				{
-					if(point_Array[j].num_line==point_Array[j+1].num_line)
+					if(point_Array[j].num_line==point_Array[j+1].num_line)//如果该两交点来自多边形的同一边与圆的交点，则画两点两线
 					{
 						//该弧在多边形外
 						//该弧的两交点在一条多边形的边上
@@ -661,18 +663,18 @@ void  CDemo_ClipView_VCDlg::forCircleRun()
 						dc.LineTo(point_Array[j+1].point);
 
 						
-					}					
+					}	
+					//如果该两交点来自多边形的不同边与圆的交点，则应该画多边形的轮廓，但是为了节约时间，就不画了，反正不画轮廓就在那不离不弃....
 				}
 			}
 		}
 
 	}
 }
-//void CDemo_ClipView_VCDlg::ClearPartialTestCaseData()
-//{
-//	CClientDC dc(this);
-//	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
-//}
+/*
+	函数：给出圆的圆点的坐标和圆上某点的坐标以及半径的长度，通过圆的参数方程，获得该点的角度
+	思路：通过三角函数即可求得。
+*/
 double CDemo_ClipView_VCDlg::getAngle(long x1,long x2,long y1,long y2,double r)
 {
 	double cos = (double)(x1-x2)/(double)r;
@@ -688,6 +690,11 @@ double CDemo_ClipView_VCDlg::getAngle(long x1,long x2,long y1,long y2,double r)
 		return a;
 	}
 }
+/*
+	函数：获得多边形窗口与圆的相邻的两个交点在圆上的的中间点。
+	思路：通过圆的参数方程，将两交点的坐标代入方程中，求得两交点各自的角度，（使用getAngle函数）
+	      然后通过三角计算，获得中间点的角度，将此角度代入圆的参数方程，就可以求得中间点的坐标
+*/
 CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i,int j)
 {
 	double a1 = getAngle(point_Array[j].point.x,circles[i].center.x,point_Array[j].point.y,circles[i].center.y,circles[i].radius);
@@ -742,6 +749,14 @@ CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i
 	point.y = y;
 	return point;
 }
+/*
+	函数：判断点是否在多边形窗口内
+	思路：根据交点法求得某点是否在多边形的窗口内部。通过该点取平行于y轴的直线l，
+	      先判断直线是否穿过多边形窗口的点。若穿过，判断与该点相邻的两边是否在l的两边，
+		  若在，则交点数加一，若在同一边，则交点数加二。
+		  然后判断多边形窗口的每一条边是否与直线l有交点，
+		  若有，则交点数加一。最后若交点数为偶数，则该点在多边形窗口外部，若为奇数，则该点在多边形窗口内部。
+*/
 bool CDemo_ClipView_VCDlg::isPointInBoundary(CPoint& point)
 {
 	int interNum = 0;
@@ -806,6 +821,10 @@ bool CDemo_ClipView_VCDlg::isPointInBoundary(CPoint& point)
 	}
 
 }
+/*
+	函数：通过直线参数方程的参数，直线的两交点的坐标，获得该直线上的一个点。
+	思路：通过直线的参数方程可以求得。
+*/
 struct r_lineNum CDemo_ClipView_VCDlg::getInterpoint(double t,int x1,int x2,int y1,int y2,int i)
 {
 	long x = x1+(x2-x1)*t;
@@ -816,7 +835,15 @@ struct r_lineNum CDemo_ClipView_VCDlg::getInterpoint(double t,int x1,int x2,int 
 	pit.num_line = i;
 	return pit;
 }
-
+/*
+	函数：获得圆与多边形的交点的集合，且交点顺序按照逆时针的方向存入point_Array的容器中
+	思路：逆时针遍历多边形的每一条边，根据直线到圆心的距离判断是否有交点，若有交点，将直线
+	      上的点的参数方程的形式代入圆的表达式，化简得到A*t^2+B*t+C=0的形式（t是直线参数方程中的参数，介于0-1）
+		  求出A,B,C的值，若 B^2-4*A*C=0,则只有一个解，且解为(-B)/(2*A)，
+		  若B^2-4*A*C>0有两个解,一个解为((-B)+sqrt(B^2-4*A*C))/(2*A),另一个解为((-B)-sqrt(B^2-4*A*C))/(2*A)
+		  然后，对解的值进行判断，若解大于等于0，解小于等于1，则是交点，否则舍去。将解值代入参数方程即可求得交点。
+		  最后，对交点的顺序进行判断，解值小的值先存入point_Array容器。
+*/
 void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int circle_num)
 {
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
@@ -890,8 +917,6 @@ void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int
 		}
 	}
 }
-
-
 
 
 // XH's codes end
