@@ -84,22 +84,31 @@ public:
 	void DrawBoundary(Boundary boundary, COLORREF clr);
 
 private:
+	//dqc methods begins
 	void JudgeConvexPoint();
 	vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
 	vector<RECT> edgeRect;//多边形的边的外矩形框
 	vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
-
-	void dealConvex();
 	void dealConcave();
+	//dqc methods ends
 
-	void ClearTestLines();
+	//gs methods begins	
+	void dealConvex();
+	bool InBox(Line&);
+	int Multinomial(int,int,int,int,int,int);
+	CPoint CrossPoint(Line&,Line&);
+	bool IsOnline(CPoint&,Line&);
+	bool Intersect(CPoint&,CPoint&,Line&);
+	Line result(Line&);
 
+	//gs methods ends
 
+	//xh methods begins
 	void getInterpointArray(vector<r_lineNum>&,int);
 	struct r_lineNum getInterpoint(double,int,int,int,int,int);
 	bool isPointInBoundary(CPoint&);
 	CPoint getMiddlePoint(vector<r_lineNum>&,int,int);
 	double getAngle(long,long,long,long,double);
-	//void ClearPartialTestCaseData();
 	void forCircleRun();
+	//xh methods ends
 };

@@ -72,7 +72,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 //功能：判断线段是否在包围盒里，若在包围盒里则返回true，否则返回false
 //形参：boundary为裁剪边界  line为所判断的线段
 //思路：遍历多边形的顶点，以最小的x,y和最大的x,y值分别为包围盒的对角线端点
-bool InBox(Boundary & boundary,Line line){
+bool CDemo_ClipView_VCDlg::InBox(Line& line){
 	bool isVisible=true;
 	int xl=INTIALIZE,xr=-INTIALIZE,yt=-INTIALIZE,yb=INTIALIZE; //对包围盒的边界值进行初始化
 	int n=boundary.vertexs.size();
@@ -92,14 +92,14 @@ bool InBox(Boundary & boundary,Line line){
 //功能：过点(x1,y1)(x2,y2)一般式直线方程为(y2-y1)x+(x1-x2)y+x2y1-x1y2=0，根据上述多项式判断(x,y)与(x1,y1)(x,2,y2)线段的位置,返回多项式值
 //形参：(x1,y1),(x2,y2)为该线段两端端点的坐标值  (x,y）为所判断的点的坐标值
 //思路：将被判断的点的坐标代入多项式中，得知其正负号
-int Multinomial(int x1,int y1,int x2,int y2,int x,int y){
+int CDemo_ClipView_VCDlg::Multinomial(int x1,int y1,int x2,int y2,int x,int y){
 	int result=(y2-y1)*x+(x1-x2)*y+x2*y1-x1*y2;
 	return result;
 }
 
 //功能：返回line1,line2两条直线的交点
 //思路：根据直线的一般式方程，求直线直接的交点
-CPoint CrossPoint(Line line1,Line line2){
+CPoint CDemo_ClipView_VCDlg::CrossPoint(Line& line1,Line& line2){
 	CPoint CrossP;
 	int a1 = line1.endpoint.y-line1.startpoint.y;
 	int b1 = line1.startpoint.x-line1.endpoint.x;
@@ -130,7 +130,7 @@ CPoint CrossPoint(Line line1,Line line2){
 
 //功能：判断点pt是否在线line上，若在线上则返回true，否则返回false
 //思路：将该直线的两个端点和被判断的端点传入Multinomial()函数中，若此多项式值为0则说明点在线段上
-bool IsOnline(CPoint pt,Line line){
+bool CDemo_ClipView_VCDlg::IsOnline(CPoint& pt,Line& line){
 	if(Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt.x,pt.y)==0)
 		return 1;
 	else 
@@ -139,7 +139,7 @@ bool IsOnline(CPoint pt,Line line){
 
 //功能：判断由pt1,pt2两个端点所在线段与线段line是否相交，若相交则返回true，否则返回false
 //思路：分别将pt1,line的两个端点和pt2，line的两个端点传入Multinomial()函数中，若返回的两个多项式值异号则说明pt1,pt2所在线段和line相交
-bool Intersect(CPoint pt1,CPoint pt2,Line line){
+bool CDemo_ClipView_VCDlg::Intersect(CPoint& pt1,CPoint& pt2,Line& line){
 	int a1=Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt1.x,pt1.y);
 	int a2=Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt2.x,pt2.y);
 	if((a1<0&&a2>0)||(a1>0&&a2<0))
@@ -148,57 +148,16 @@ bool Intersect(CPoint pt1,CPoint pt2,Line line){
 		return 0;
 }
 
-//功能：判断点point是否在多边形boundary内部，若在内部返回ture，否则返回false
-//思路：以point为端点延y轴正方向做射线，判断其与多边形相交点的奇偶数，若为奇数则点在多边形内，若为偶数则点在多边形外
-//		特殊情况的处理：1）若点在多边形的边上则认为点在多边形内
-//						2）若所做射线与多边形的边平行，则跳过该边不进行处理
-//						3）若所做射线过多边形顶点v，判断v的两个相邻端点是否在该射线的两侧
-bool InPolygon(Boundary & boundary,CPoint point){
-	int n=boundary.vertexs.size();
-	int CrossCount=0;
-	//int Count=0;
-	//延某y方向做一条直线
-	Line line;
-	line.startpoint=point;
-	line.endpoint.x=point.x;
-	line.endpoint.y=INTIALIZE;
-	//得到多边形的边
-	for(int i=0;i<n-1;i++){
-		Line side;
-		side.startpoint=boundary.vertexs[i];
-		side.endpoint=boundary.vertexs[(i+1)%n];
-		//判断点是否在边上
-		if(IsOnline(point,side)) return 1;
-		//若该边与Y轴平行 不考虑
-		else if(abs(side.startpoint.x-side.endpoint.x)<ESP) continue;
-		//讨论过顶点的情况
-		else if(IsOnline(side.startpoint,line)){
-			if(Intersect(boundary.vertexs[(i+1)%n],boundary.vertexs[(i-1)%n],line)&&side.startpoint.y<point.y) CrossCount++;
-			if(i==(n-2)) break;
-		}
-		else if(IsOnline(side.endpoint,line)){
-			if(Intersect(boundary.vertexs[i],boundary.vertexs[(i+2)%(n-1)],line)&&side.endpoint.y<point.y){
-				CrossCount++;
-				i++;
-			}  
-		}
-		else if(Intersect(side.startpoint,side.endpoint,line)){
-			if(Intersect(line.startpoint,line.endpoint,side)) CrossCount++;
-		} 
-	}
-	if ( CrossCount==2||CrossCount==0) {return 0;}
-	else { return 1;}
-}
-
 //功能：传入裁剪边界boundary和被裁剪线段line.返回裁剪后所显示线段
 //思路：根据点与多边形的位置，计算出需要显示线段的端点，得出显示线段
-Line result(Boundary & boundary,Line line){
+Line CDemo_ClipView_VCDlg::result(Line& line){
 	Line line_result;
 	line_result.startpoint.x=line_result.startpoint.y=INTIALIZE;
 	line_result.endpoint.x=line_result.endpoint.y=INTIALIZE;
 
-	bool bspt=InPolygon(boundary,line.startpoint);//startpoint是否在多边形内，若是返回值为true
-	bool bept=InPolygon(boundary,line.endpoint);  //endpoint是否在多边形内，若是返回值为true
+	bool bspt=isPointInBoundary(line.startpoint);//startpoint是否在多边形内，若是返回值为true
+
+	bool bept=isPointInBoundary(line.endpoint);  //endpoint是否在多边形内，若是返回值为true
 	//若两点都在多边形内则绘制该直线
  	if(bspt&&bept)
 		return line; 
@@ -285,33 +244,28 @@ Line result(Boundary & boundary,Line line){
 }
 
 
-void CDemo_ClipView_VCDlg::ClearTestLines()
-{
-	hasOutCanvasData = FALSE;
-	complexArray.RemoveAll();
-	//boundary.vertexs.clear();
-	circles.clear();
-	lines.clear();
-	CClientDC dc(this);
-	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
-}
-
 void CDemo_ClipView_VCDlg::dealConvex()
 {
 
 	//TODO 在此处完成裁剪算法和裁剪后显示程序
-
-	//此处处理的是凸多边形窗口百万级线段
+	
+	//以下为暂时的绘图代码
+	CClientDC dc(this);
+	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
+	COLORREF clrBoundary = RGB(255,0,0);
+	DrawBoundary(boundary, clrBoundary);
 	COLORREF clrLine = RGB(0,255,0);
+	
+	//此处处理的是凸多边形窗口百万级线段
 	for(int i=0;i<lines.size();i++){
 		//先判断线段是否在包围盒内，若明显不在则不显示该线段，否则继续以下步骤
-		if(InBox(boundary,lines[i])){
-			Line line=result(boundary,lines[i]);
+		if(InBox(lines[i])){
+			Line line=result(lines[i]);
 			if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
 				DrawLine(line,clrLine);
 		}
 	}
-    ClearTestLines();
+    //ClearTestLines();
 }
 
 // GS's codes end
@@ -805,7 +759,7 @@ bool CDemo_ClipView_VCDlg::isPointInBoundary(CPoint& point)
 			long c = x4*y3-x3*y4;
 			long long isInter1 = (long long)(a*x1+b*y1+c);
 			long long isInter2 = (long long)(a*x2+b*y2+c);
-			if((isInter1<0&&isInter2>0)||(isInter1>0&&isInter2<0))
+			if((isInter1<=0&&isInter2>=0)||(isInter1>=0&&isInter2<=0))
 			{
 				interNum++;
 			}
