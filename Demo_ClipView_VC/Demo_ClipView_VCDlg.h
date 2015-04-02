@@ -20,7 +20,7 @@ struct r_lineNum
 	CPoint point;
 	int num_line;
 };
-
+const int THREAD_NUMBER=4;
 
 // CDemo_ClipView_VCDlg 对话框
 class CDemo_ClipView_VCDlg : public CDialogEx
@@ -82,19 +82,20 @@ public:
 	void DrawLine(Line line, COLORREF clr);
 	void DrawCircle(Circle circle, COLORREF clr);
 	void DrawBoundary(Boundary boundary, COLORREF clr);
+	static DWORD WINAPI ThreadProc(LPVOID lpParam);
 
-private:
+public:
 	//dqc methods begins
-	void JudgeConvexPoint();
-	vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
-	vector<RECT> edgeRect;//多边形的边的外矩形框
-	vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
+	void JudgeConvexPoint(vector<BOOL>&);
+	//vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
+	//vector<RECT> edgeRect;//多边形的边的外矩形框
+	//vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
 	int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
-	void dealConcave();
+	static void dealConcave(vector<Line>&,Boundary&,CDemo_ClipView_VCDlg*);
 	//dqc methods ends
 
 	//gs methods begins	
-	void dealConvex();
+	static void dealConvex(vector<Line>&,Boundary&,CDemo_ClipView_VCDlg*);
 	bool InBox(Line&);
 	int Multinomial(int,int,int,int,int,int);
 	CPoint CrossPoint(Line&,Line&);
@@ -105,11 +106,11 @@ private:
 	//gs methods ends
 
 	//xh methods begins
-	void getInterpointArray(vector<r_lineNum>&,int);
+	void getInterpointArray(vector<r_lineNum>&,int,vector<Circle>&);
 	struct r_lineNum getInterpoint(double,int,int,int,int,int);
 	bool isPointInBoundary(CPoint&);
-	CPoint getMiddlePoint(vector<r_lineNum>&,int,int);
+	CPoint getMiddlePoint(vector<r_lineNum>&,int,int,vector<Circle>&);
 	double getAngle(long,long,long,long,double);
-	void forCircleRun();
+	static void forCircleRun(vector<Circle>&,Boundary&,CDemo_ClipView_VCDlg*);
 	//xh methods ends
 };

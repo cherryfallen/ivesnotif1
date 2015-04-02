@@ -74,6 +74,9 @@
     <Report>
       <Path>Demo_ClipView_VC150330.vsp</Path>
     </Report>
+    <Report>
+      <Path>Demo_ClipView_VC150401.vsp</Path>
+    </Report>
   </Reports>
   <Launches>
     <ProjBinary>

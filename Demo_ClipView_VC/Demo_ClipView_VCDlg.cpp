@@ -23,7 +23,7 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
-#define TEST_CIRCLES 0
+#define TEST_CIRCLES 1
 //裁剪算法相关定义
 const int INTIALIZE=0;
 const double ESP=1e-5;
@@ -31,7 +31,14 @@ const double ESP=1e-5;
 
 /////////////////////////////////////
 // main part begins
-
+struct  _param   {  
+    vector<Line> thread_lines;
+	vector<Circle> thread_circles;
+    Boundary boundary;
+	CDemo_ClipView_VCDlg* dlg;
+	int i;
+    //CClientDC dc(this);
+	};
 
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
@@ -45,22 +52,78 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	COLORREF clrLine = RGB(0,255,0);
 	//以上为暂时的绘图代码
 
+	HANDLE hThead[THREAD_NUMBER];     //用于存储线程句柄
+	DWORD  dwThreadID[THREAD_NUMBER]; //用于存储线程的ID
+	_param* Info = new _param[THREAD_NUMBER]; //传递给线程处理函数的参数
+	int nThreadLines=(int)(lines.size()/THREAD_NUMBER);
+	int nThreadCircles = (int)(circles.size()/THREAD_NUMBER);
 
 	BeginTimeAndMemoryMonitor();
 
-	if (TEST_LINES)
-	{
-		if (boundary.isConvex)
-			dealConvex();
-		else
-			dealConcave();
+	for(int i=0;i<(THREAD_NUMBER-1);i++){
+		for (int j = (i*nThreadLines); j < ((i+1)*nThreadLines); j++)
+		{
+			Info[i].thread_lines.push_back(lines[j]);
+		}
+		for (int j = (i*nThreadCircles); j < ((i+1)*nThreadCircles); j++)
+		{
+			Info[i].thread_circles.push_back(circles[j]);
+		}
+		
+		Info[i].dlg = this;	
+		Info[i].i = i;
 	}
-	if (TEST_CIRCLES)
-		forCircleRun();
+	for (int j = ((THREAD_NUMBER-1)*nThreadLines); j <lines.size(); j++)
+	{
+		Info[THREAD_NUMBER-1].thread_lines.push_back(lines[j]);
+	}
+	for (int j = ((THREAD_NUMBER-1)*nThreadCircles); j <circles.size(); j++)
+	{
+		Info[THREAD_NUMBER-1].thread_circles.push_back(circles[j]);
+	}
+	Info[THREAD_NUMBER-1].dlg = this;	
+	Info[THREAD_NUMBER-1].i = THREAD_NUMBER-1;	
 
+	for (int i = 0;  i<THREAD_NUMBER; i++)
+	{
+			
+			Info[i].boundary = boundary;
+	
+	}
+	for (int i = 0;i<THREAD_NUMBER;i++)
+	{
+
+		hThead[i] = CreateThread(NULL,0,ThreadProc,&Info[i],0,&(dwThreadID[i]));
+		
+
+	}
+	for (int i = 0; i < THREAD_NUMBER; i++)
+	{
+		//WaitForSingleObject(thread_event[i],INFINITE);
+		WaitForSingleObject(hThead[i],INFINITE);
+	}
+	
 	EndTimeAndMemoryMonitor();
 }
 
+
+DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc(LPVOID lpParam)  
+{  
+	COLORREF clrLine = RGB(0,255,0);
+    _param  * Info = ( _param *)lpParam; 
+	
+	if (TEST_LINES)
+	{
+		if (Info->boundary.isConvex)
+			dealConvex(Info->thread_lines,Info->boundary,Info->dlg);
+		else
+			dealConcave(Info->thread_lines,Info->boundary,Info->dlg);
+	}
+	if (TEST_CIRCLES)
+		forCircleRun(Info->thread_circles,Info->boundary,Info->dlg);
+	//thread_event[Info->i].SetEvent();
+    return 0;  
+}  
 // main part ends
 /////////////////////////////////////////
 
@@ -250,25 +313,25 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 }
 
 
-void CDemo_ClipView_VCDlg::dealConvex()
+void CDemo_ClipView_VCDlg::dealConvex(vector<Line>& lines,Boundary& boundary,CDemo_ClipView_VCDlg* dlg)
 {
 
 	//TODO 在此处完成裁剪算法和裁剪后显示程序
 	
 	//以下为暂时的绘图代码
-	CClientDC dc(this);
+	CClientDC dc(dlg);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 	COLORREF clrBoundary = RGB(255,0,0);
-	DrawBoundary(boundary, clrBoundary);
+	dlg->DrawBoundary(boundary, clrBoundary);
 	COLORREF clrLine = RGB(0,255,0);
 	
 	//此处处理的是凸多边形窗口百万级线段
 	for(int i=0;i<lines.size();i++){
 		//先判断线段是否在包围盒内，若明显不在则不显示该线段，否则继续以下步骤
-		if(InBox(lines[i])){
-			Line line=result(lines[i]);
+		if(dlg->InBox(lines[i])){
+			Line line=dlg->result(lines[i]);
 			if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
-				DrawLine(line,clrLine);
+				dlg->DrawLine(line,clrLine);
 		}
 	}
     //ClearTestLines();
@@ -324,7 +387,7 @@ bool Compare(IntersectPoint a,IntersectPoint b)
 	思路：求相邻两边的向量的叉积，已知凸点的值与凹点的值正负性不同，并且x坐标最大的点一定是凸点。
 		  先计算相邻两边的向量的叉积并保存，同时找出x最大的点。再通过与x最大的点比较正负性得出点的凹凸性。
 */
-void CDemo_ClipView_VCDlg::JudgeConvexPoint()
+void CDemo_ClipView_VCDlg::JudgeConvexPoint(vector<BOOL>& convexPoint)
 {
 	int dotnum=boundary.vertexs.size()-1;//多边形顶点数
 	vector<int> z;
@@ -368,12 +431,14 @@ void CDemo_ClipView_VCDlg::JudgeConvexPoint()
 		  然后处理当线段与多边形的顶点相交的特殊情况。
 		  最后寻找所有符合“入点-出点”的线段作为显示的线段。
 */
-void CDemo_ClipView_VCDlg::dealConcave()
+void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CDemo_ClipView_VCDlg* dlg)
 {
 	//TODO 在此处完成裁剪算法和裁剪后显示程序
 	COLORREF clrLine = RGB(0,255,0);
-
-	JudgeConvexPoint();
+	vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
+	vector<RECT> edgeRect;//多边形的边的外矩形框
+	vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
+	dlg->JudgeConvexPoint(convexPoint);
 
 	//先算出所有多边形的边的外矩形框
 	int edgenum=boundary.vertexs.size()-1;
@@ -420,8 +485,8 @@ void CDemo_ClipView_VCDlg::dealConcave()
 			CPoint q2=lines[i].endpoint;//q1q2为线段
 
 
-			long long a= ((long long)CrossMulti(p1,q1,p1,p2)) * (CrossMulti(p1,p2,p1,q2));
-			long long b= ((long long)CrossMulti(q1,p1,q1,q2)) * (CrossMulti(q1,q2,q1,p2));
+			long long a= ((long long)dlg->CrossMulti(p1,q1,p1,p2)) * (dlg->CrossMulti(p1,p2,p1,q2));
+			long long b= ((long long)dlg->CrossMulti(q1,p1,q1,q2)) * (dlg->CrossMulti(q1,q2,q1,p2));
 			if (!(a>=0 && b>=0))//不相交就跳过这条边
 				continue;
 
@@ -487,8 +552,8 @@ void CDemo_ClipView_VCDlg::dealConcave()
 		//没有交点
 		if (!haveIntersect)
 		{
-			if (isPointInBoundary(lines[i].startpoint))//如果在多边形内
-				DrawLine(lines[i],clrLine);
+			if (dlg->isPointInBoundary(lines[i].startpoint))//如果在多边形内
+				dlg->DrawLine(lines[i],clrLine);
 			continue;
 		}
 
@@ -532,7 +597,7 @@ void CDemo_ClipView_VCDlg::dealConcave()
 				Line l;
 				l.startpoint=intersectPoint[i].point;
 				l.endpoint=intersectPoint[i+1].point;
-				DrawLine(l,clrLine);
+				dlg->DrawLine(l,clrLine);
 				i++;
 			}
 		}
@@ -559,22 +624,22 @@ void CDemo_ClipView_VCDlg::dealConcave()
 //////////////////////////////////
 // XH's codes begin
 
-void  CDemo_ClipView_VCDlg::forCircleRun()
+void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& boundary,CDemo_ClipView_VCDlg* dlg)
 {
 	CPen penUse;
 	COLORREF clrCircle = RGB(0,0,255);	
     penUse.CreatePen(PS_SOLID, 1, clrCircle);
-	CClientDC dc(this);
+	CClientDC dc(dlg);
 	dc.SelectObject(&penUse);
 	//初始化画笔结束
 	
 	for(unsigned int i = 0;i<circles.size();i++){  //再次开始遍历每一个圆
 	    vector<r_lineNum> point_Array;   //用于存储每个圆与多边形窗口的交点
-		getInterpointArray(point_Array,i);  //获得存储交点的容器
+		dlg->getInterpointArray(point_Array,i,circles);  //获得存储交点的容器
 		
 		if(point_Array.size()==0||point_Array.size()==1) //将完全跟多边形不相交以及相切的情况的圆排除，
 		{
-			bool inBoundary = isPointInBoundary(circles[i].center); //圆心若在多边形内
+			bool inBoundary = dlg->isPointInBoundary(circles[i].center); //圆心若在多边形内
 			if (inBoundary==true)
 			{
 				long _x = boundary.vertexs[0].x-circles[i].center.x;
@@ -610,8 +675,8 @@ void  CDemo_ClipView_VCDlg::forCircleRun()
 			//开始对交点容器中的每一个交点进行遍历
 			for (unsigned int j = 0; j < point_Array.size()-1; j++)
 			{
-				CPoint mid_point = getMiddlePoint(point_Array,i,j); //获得两交点的在圆上的中间点
-				bool mid_in_bound = isPointInBoundary(mid_point);  //判断中间点是否在多边形窗口内
+				CPoint mid_point = dlg->getMiddlePoint(point_Array,i,j,circles); //获得两交点的在圆上的中间点
+				bool mid_in_bound = dlg->isPointInBoundary(mid_point);  //判断中间点是否在多边形窗口内
 				if(mid_in_bound == true) //在多边形窗口内，则画整个圆弧
 				{				
 					int start_x = circles[i].center.x-circles[i].radius;
@@ -667,10 +732,10 @@ double CDemo_ClipView_VCDlg::getAngle(long x1,long x2,long y1,long y2,double r)
 	思路：通过圆的参数方程，将两交点的坐标代入方程中，求得两交点各自的角度，（使用getAngle函数）
 	      然后通过三角计算，获得中间点的角度，将此角度代入圆的参数方程，就可以求得中间点的坐标
 */
-CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i,int j)
+CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i,int j,vector<Circle>& circles2)
 {
-	double a1 = getAngle(point_Array[j].point.x,circles[i].center.x,point_Array[j].point.y,circles[i].center.y,circles[i].radius);
-	double a2 = getAngle(point_Array[j+1].point.x,circles[i].center.x,point_Array[j+1].point.y,circles[i].center.y,circles[i].radius);
+	double a1 = getAngle(point_Array[j].point.x,circles2[i].center.x,point_Array[j].point.y,circles2[i].center.y,circles2[i].radius);
+	double a2 = getAngle(point_Array[j+1].point.x,circles2[i].center.x,point_Array[j+1].point.y,circles2[i].center.y,circles2[i].radius);
 	double mid_a = 0;
 
 	if(a1<PI&&a2<PI)
@@ -714,8 +779,8 @@ CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i
 		}
 		
 	}
-	double x = circles[i].center.x+circles[i].radius*cos(mid_a);
-	double y = circles[i].center.y+circles[i].radius*sin(mid_a);
+	double x = circles2[i].center.x+circles2[i].radius*cos(mid_a);
+	double y = circles2[i].center.y+circles2[i].radius*sin(mid_a);
 	CPoint point ;
 	point.x = x;
 	point.y = y;
@@ -816,7 +881,7 @@ struct r_lineNum CDemo_ClipView_VCDlg::getInterpoint(double t,int x1,int x2,int 
 		  然后，对解的值进行判断，若解大于等于0，解小于等于1，则是交点，否则舍去。将解值代入参数方程即可求得交点。
 		  最后，对交点的顺序进行判断，解值小的值先存入point_Array容器。
 */
-void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int circle_num)
+void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Circle>& circle2)
 {
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
@@ -824,21 +889,21 @@ void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int
 		long x2 = boundary.vertexs[i-1].x;
 		long y1 = boundary.vertexs[i].y;
 		long y2 = boundary.vertexs[i-1].y;
-		long x0 = circles[circle_num].center.x;
-		long y0 = circles[circle_num].center.y;
+		long x0 = circle2[circle_num].center.x;
+		long y0 = circle2[circle_num].center.y;
 		long a = y2-y1;
 		long b = x1-x2;
 		long c = x2*y1-x1*y2;
 		double _abs = abs((double)(a*x0+b*y0+c));
 		double _sqrt = sqrt((double)(a*a+b*b));
 		double d = _abs/_sqrt;
-		if (d>circles[circle_num].radius)
+		if (d>circle2[circle_num].radius)
 		{
 			continue;
 		}
 		long long A = x1*x1+x2*x2+y1*y1+y2*y2-2*x1*x2-2*y1*y2;
 		long long B = 2*(x0*x1+x1*x2+y0*y1+y1*y2-x0*x2-y0*y2-x1*x1-y1*y1);
-		long long C = x0*x0+x1*x1+y0*y0+y1*y1-2*x0*x1-2*y0*y1-circles[circle_num].radius*circles[circle_num].radius;
+		long long C = x0*x0+x1*x1+y0*y0+y1*y1-2*x0*x1-2*y0*y1-circle2[circle_num].radius*circle2[circle_num].radius;
 		long long key = B*B-4*A*C;
 		if(key == 0)
 		{
@@ -1221,9 +1286,9 @@ void CDemo_ClipView_VCDlg::ClearTestCaseData()
 	lines.clear();
 
 	//added
-	convexPoint.clear();
-	edgeRect.clear();
-	intersectPoint.clear();
+	//convexPoint.clear();
+	//edgeRect.clear();
+	//intersectPoint.clear();
 
 	CClientDC dc(this);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
