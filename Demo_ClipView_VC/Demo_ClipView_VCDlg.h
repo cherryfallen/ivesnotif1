@@ -20,6 +20,11 @@ struct r_lineNum
 	CPoint point;
 	int num_line;
 };
+struct Vector
+{
+	double x,y;
+};
+
 const int THREAD_NUMBER=4;
 
 // CDemo_ClipView_VCDlg 对话框
@@ -87,6 +92,7 @@ public:
 public:
 	//dqc methods begins
 	void JudgeConvexPoint(vector<BOOL>&);
+	void ComputeNormalVector(vector<Vector>&,vector<BOOL>&);
 	//vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
 	//vector<RECT> edgeRect;//多边形的边的外矩形框
 	//vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
