@@ -23,7 +23,8 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
-#define TEST_CIRCLES 1
+#define TEST_CIRCLES 0
+
 //裁剪算法相关定义
 const int INTIALIZE=0;
 const double ESP=1e-5;
@@ -116,9 +117,9 @@ DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc(LPVOID lpParam)
 	
 	if (TEST_LINES)
 	{
-		if (Info->boundary.isConvex)
-			dealConvex(Info->thread_lines,Info->boundary,Info->dlg);
-		else
+		//if (Info->boundary.isConvex)
+		//	dealConvex(Info->thread_lines,Info->boundary,Info->dlg);
+		//else
 			dealConcave(Info->thread_lines,Info->boundary,Info->dlg);
 	}
 	if (TEST_CIRCLES)
@@ -427,10 +428,60 @@ void CDemo_ClipView_VCDlg::JudgeConvexPoint(vector<BOOL>& convexPoint)
 	convexPoint.push_back(convexPoint[0]);
 }
 
+/*
+	功能：计算多边形的边的内法向量
+	思路：绕多边形的边界依次计算。对于某一条边，先随意构造出一个与当前边垂直的法向量。
+		  若该法向量与前一条边的向量的点积为正，则将法向量反向。
+		  如果这两条边的公共顶点为凹点，则将该法向量再反向。
+*/
+void CDemo_ClipView_VCDlg::ComputeNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
+{
+	int edgenum=boundary.vertexs.size()-1;//多边形边数
+
+	for (int i=0;i<edgenum;i++)
+	{
+		CPoint p1=boundary.vertexs[i];
+		CPoint p2=boundary.vertexs[i+1];//p1p2为多边形的边
+
+		//求内法向量
+		CPoint p0;//p0为p1前面一个顶点
+		if (i==0)
+			p0=boundary.vertexs[edgenum-1];
+		else
+			p0=boundary.vertexs[i-1];
+		double n1,n2;
+		//先任意算出一个法向量
+		if (p2.y-p1.y==0)
+		{
+			n2=1;
+			n1=0;
+		}
+		else
+		{
+			n1=1;
+			n2=-(double)(p2.x-p1.x)/(p2.y-p1.y);
+		}
+		if ((p1.x-p0.x)*n1+(p1.y-p0.y)*n2>0)//与前一条边点乘，如果方向错了，使法向量反向
+		{
+			n1=-n1;
+			n2=-n2;
+		}
+		if (!convexPoint[i])//如果是凹点，法向量再反向
+		{
+			n1=-n1;
+			n2=-n2;
+		}
+
+		Vector nv;
+		nv.x=n1;
+		nv.y=n2;
+		normalVector.push_back(nv);
+	}
+}
 
 
 /*
-	函数：处理凸多边形的裁剪
+	函数：处理凹多边形的裁剪
 	思路：先预处理判断出每个点的凹凸性，算出所有多边形的边的外矩形框。
 		  然后枚举每条线段与每条多边形的边，先通过快速排除法排除明显不可能相交的边，再通过跨立试验进一步判断是否有交点。
 		  接着用改进的cyrus-beck算法算出交点的值，以及交点的性质（出点还是入点），并将线段的起点作为入点，终点作为出点。
@@ -443,8 +494,10 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 	COLORREF clrLine = RGB(0,255,0);
 	vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
 	vector<RECT> edgeRect;//多边形的边的外矩形框
+	vector<Vector> normalVector;//多边形的边的内法向量
 	vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
 	dlg->JudgeConvexPoint(convexPoint);
+	dlg->ComputeNormalVector(normalVector,convexPoint);
 
 	//先算出所有多边形的边的外矩形框
 	int edgenum=boundary.vertexs.size()-1;
@@ -496,35 +549,9 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 			if (!(a>=0 && b>=0))//不相交就跳过这条边
 				continue;
 
-			//求内法向量
-			CPoint p0;//p0为p1前面一个顶点
-			if (j==0)
-				p0=boundary.vertexs[edgenum-1];
-			else
-				p0=boundary.vertexs[j-1];
-			double n1,n2;
-			//先任意算出一个法向量
-			if (p2.y-p1.y==0)
-			{
-				n2=1;
-				n1=0;
-			}
-			else
-			{
-				n1=1;
-				n2=-(double)(p2.x-p1.x)/(p2.y-p1.y);
-			}
-			if ((p1.x-p0.x)*n1+(p1.y-p0.y)*n2>0)//与前一条边点乘，如果方向错了，使法向量反向
-			{
-				n1=-n1;
-				n2=-n2;
-			}
-			if (!convexPoint[j])//如果是凹点，法向量再反向
-			{
-				n1=-n1;
-				n2=-n2;
-			}
-
+			//取出内法向量
+			double n1=normalVector[j].x;
+			double n2=normalVector[j].y;
 
 			//cyrus-beck算法 算出参数t
 			double t1=n1*(q2.x-q1.x)+n2*(q2.y-q1.y);
@@ -573,12 +600,12 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 
 		std::sort(intersectPoint.begin()+1,intersectPoint.end()-1,Compare);//按t从小到大排序
 
-		//如果有两点t值相同（即线段与多边形的顶点相交的特殊情况），并且一个是入点，一个是出点，则根据顶点的凹凸性重新安排入、出
+		//如果有两点t值相同（即线段与多边形的顶点相交的特殊情况），并且一个是入点，一个是出点，则根据顶点的凹凸性重新安排入、出（不能动第一个点和最后的点，即线段的端点）
 		vector<IntersectPoint>::iterator iter = intersectPoint.begin();
 		iter++;
 		for (;iter!= intersectPoint.end()&&(iter+1)!= intersectPoint.end()&&(iter+2)!= intersectPoint.end();iter++ )
 			if ( ((*iter).isIntoPoly ^ (*(iter+1)).isIntoPoly )
-				&&abs((*iter).t-(*(iter+1)).t)<1e-9)
+				&&abs((*iter).t-(*(iter+1)).t)<1e-9)  
 			{
 				if (convexPoint[(*iter).convexPointNum+1]&& !(*iter).isIntoPoly)
 				{
