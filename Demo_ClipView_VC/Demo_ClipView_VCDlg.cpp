@@ -31,6 +31,7 @@ const double ESP=1e-5;
 
 /////////////////////////////////////
 // main part begins
+
 struct  _param   {  
     vector<Line> thread_lines;
 	vector<Circle> thread_circles;
@@ -90,6 +91,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 			Info[i].boundary = boundary;
 	
 	}
+
 	for (int i = 0;i<THREAD_NUMBER;i++)
 	{
 
@@ -231,8 +233,12 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
  	if(bspt&&bept)
 		return line; 
 	//若startpoint在多边形内，但endpoint在多边形外
-	else if(bspt&&(!bept)){
-		line_result.startpoint=line.startpoint;
+	else if((bspt&&(!bept))||((!bspt)&&bept)){
+		if(bspt&&(!bept))
+			line_result.startpoint=line.startpoint;
+		else if((!bspt)&&bept)
+			line_result.startpoint=line.endpoint;
+		
 		//求交点
 		int n=boundary.vertexs.size();
 		int i=0;
@@ -255,28 +261,28 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 		return line_result;
 	}
 	//若startpoint在多边形外，但endpoint在多边形内
-	else if((!bspt)&&bept){
-		line_result.startpoint=line.endpoint;
-		//求交点
-		int n=boundary.vertexs.size();
-		int i=0;
-		while(i<n-1){
-			Line side;
-			side.startpoint=boundary.vertexs[i];
-			side.endpoint=boundary.vertexs[(i+1)%n];
-			if(Intersect(side.startpoint,side.endpoint,line)){
-				CPoint p=CrossPoint(line,side);
-				if(p.x<=max(line.startpoint.x,line.endpoint.x)&&p.x>=min(line.startpoint.x,line.endpoint.x)
-					&&p.y<=max(line.startpoint.y,line.endpoint.y)&&p.y>=min(line.startpoint.y,line.endpoint.y)){
-							line_result.endpoint=CrossPoint(line,side);
-							break;
-				}
-				else i++;
-			}
-			else i++;
-		}
-		return line_result;
-	}
+	//else if((!bspt)&&bept){
+	//	line_result.startpoint=line.endpoint;
+	//	//求交点
+	//	int n=boundary.vertexs.size();
+	//	int i=0;
+	//	while(i<n-1){
+	//		Line side;
+	//		side.startpoint=boundary.vertexs[i];
+	//		side.endpoint=boundary.vertexs[(i+1)%n];
+	//		if(Intersect(side.startpoint,side.endpoint,line)){
+	//			CPoint p=CrossPoint(line,side);
+	//			if(p.x<=max(line.startpoint.x,line.endpoint.x)&&p.x>=min(line.startpoint.x,line.endpoint.x)
+	//				&&p.y<=max(line.startpoint.y,line.endpoint.y)&&p.y>=min(line.startpoint.y,line.endpoint.y)){
+	//						line_result.endpoint=CrossPoint(line,side);
+	//						break;
+	//			}
+	//			else i++;
+	//		}
+	//		else i++;
+	//	}
+	//	return line_result;
+	//}
 	//startpoint和endpoint均在多边形外
 	else if((!bspt)&&(!bept)){
 		int n=boundary.vertexs.size();

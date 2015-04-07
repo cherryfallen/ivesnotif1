@@ -25,7 +25,7 @@ struct Vector
 	double x,y;
 };
 
-const int THREAD_NUMBER=4;
+const int THREAD_NUMBER=8;
 
 // CDemo_ClipView_VCDlg ¶Ô»°¿ò
 class CDemo_ClipView_VCDlg : public CDialogEx
