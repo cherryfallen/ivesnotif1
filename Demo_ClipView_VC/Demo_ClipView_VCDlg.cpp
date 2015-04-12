@@ -23,7 +23,7 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
-#define TEST_CIRCLES 0
+#define TEST_CIRCLES 1
 
 //裁剪算法相关定义
 const int INTIALIZE=0;
@@ -42,6 +42,17 @@ struct  _param   {
     //CClientDC dc(this);
 	};
 
+struct  _arc2draw   {  
+	CRect rect;
+	CPoint start_point;
+	CPoint end_point;
+	};
+//用于存储需要画的线的全局变量的容器
+vector<Line> *lines_to_draw = new vector<Line>();
+vector<_arc2draw> *circles_to_draw = new vector<_arc2draw>();
+
+CRITICAL_SECTION g_cs;  //保护临界区
+
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
 	//以下为暂时的绘图代码
@@ -52,6 +63,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	DrawBoundary(boundary, clrBoundary);
 
 	COLORREF clrLine = RGB(0,255,0);
+	COLORREF clrCircle = RGB(0,0,255);
 	//以上为暂时的绘图代码
 
 	HANDLE hThead[THREAD_NUMBER];     //用于存储线程句柄
@@ -93,6 +105,8 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	
 	}
 
+	InitializeCriticalSection(&g_cs);
+
 	for (int i = 0;i<THREAD_NUMBER;i++)
 	{
 
@@ -105,8 +119,23 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		//WaitForSingleObject(thread_event[i],INFINITE);
 		WaitForSingleObject(hThead[i],INFINITE);
 	}
+	CPen penUse;
+    penUse.CreatePen(PS_SOLID, 1, clrLine);
+	dc.SelectObject(&penUse);
+	for (int i = 0; i < (*lines_to_draw).size(); i++)
+	{
+		dc.MoveTo((*lines_to_draw)[i].startpoint);
+		dc.LineTo((*lines_to_draw)[i].endpoint);
+	}
+	penUse.CreatePen(PS_SOLID, 1, clrCircle);
+	dc.SelectObject(&penUse);
+	for (int i = 0; i < (*circles_to_draw).size(); i++)
+	{
+		dc.Arc(&((*circles_to_draw)[i].rect),(*circles_to_draw)[i].start_point,(*circles_to_draw)[i].end_point);
+	}
 	
 	EndTimeAndMemoryMonitor();
+	DeleteCriticalSection(&g_cs); 
 }
 
 
@@ -326,19 +355,20 @@ void CDemo_ClipView_VCDlg::dealConvex(vector<Line>& lines,Boundary& boundary,CDe
 	//TODO 在此处完成裁剪算法和裁剪后显示程序
 	
 	//以下为暂时的绘图代码
-	CClientDC dc(dlg);
+	/*CClientDC dc(dlg);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 	COLORREF clrBoundary = RGB(255,0,0);
 	dlg->DrawBoundary(boundary, clrBoundary);
-	COLORREF clrLine = RGB(0,255,0);
+	COLORREF clrLine = RGB(0,255,0);*/
 	
 	//此处处理的是凸多边形窗口百万级线段
 	for(int i=0;i<lines.size();i++){
 		//先判断线段是否在包围盒内，若明显不在则不显示该线段，否则继续以下步骤
 		if(dlg->InBox(lines[i])){
 			Line line=dlg->result(lines[i]);
-			if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
-				dlg->DrawLine(line,clrLine);
+			(*lines_to_draw).push_back(line);
+			/*if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
+				dlg->DrawLine(line,clrLine);*/
 		}
 	}
     //ClearTestLines();
@@ -630,7 +660,10 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 				Line l;
 				l.startpoint=intersectPoint[i].point;
 				l.endpoint=intersectPoint[i+1].point;
-				dlg->DrawLine(l,clrLine);
+				EnterCriticalSection(&g_cs); 
+				(*lines_to_draw).push_back(l);
+				LeaveCriticalSection(&g_cs); 
+				/*dlg->DrawLine(l,clrLine);*/
 				i++;
 			}
 		}
@@ -659,11 +692,11 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 
 void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& boundary,CDemo_ClipView_VCDlg* dlg)
 {
-	CPen penUse;
+	/*CPen penUse;
 	COLORREF clrCircle = RGB(0,0,255);	
     penUse.CreatePen(PS_SOLID, 1, clrCircle);
 	CClientDC dc(dlg);
-	dc.SelectObject(&penUse);
+	dc.SelectObject(&penUse);*/
 	//初始化画笔结束
 	
 	for(unsigned int i = 0;i<circles.size();i++){  //再次开始遍历每一个圆
@@ -681,12 +714,19 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 				if (t==true)   //若圆的半径比较小
 				{
 					//画整个圆
-					dc.Arc(circles[i].center.x - circles[i].radius, circles[i].center.y - circles[i].radius, circles[i].center.x + circles[i].radius, circles[i].center.y + circles[i].radius, 0, 0, 0, 0);
-				}
-				else   //若圆的半径比较大
-				{
-					//什么都不画
-					continue;
+					CRect rect(circles[i].center.x - circles[i].radius,circles[i].center.y - circles[i].radius,circles[i].center.x + circles[i].radius,circles[i].center.y + circles[i].radius);
+					CPoint start_point,end_point;
+					start_point.x = 0; start_point.y = 0;
+					end_point.x = 0; end_point.y = 0;
+					/*CClientDC dc(dlg);
+					dc.Arc(&rect, start_point, end_point);*/
+					struct _arc2draw arc2draw ;
+					arc2draw.rect = rect;
+					arc2draw.start_point = start_point;
+					arc2draw.end_point = end_point;
+					EnterCriticalSection(&g_cs);  
+					(*circles_to_draw).push_back(arc2draw);
+					 LeaveCriticalSection(&g_cs); 
 				}
 			}
 		}
@@ -718,24 +758,31 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 					int end_y = circles[i].center.y+circles[i].radius;
 					
 					CRect rect(start_x,start_y,end_x,end_y);
-					dc.Arc(&rect,point_Array[j].point,point_Array[j+1].point);
+					/*dc.Arc(&rect,point_Array[j].point,point_Array[j+1].point);*/
+					struct _arc2draw arc2draw ;
+					arc2draw.rect = rect;
+					arc2draw.start_point = point_Array[j].point;
+					arc2draw.end_point = point_Array[j+1].point;
+					EnterCriticalSection(&g_cs);  
+					(*circles_to_draw).push_back(arc2draw);
+					 LeaveCriticalSection(&g_cs); 
 
 				}
-				else//在多边形窗口外
-				{
-					if(point_Array[j].num_line==point_Array[j+1].num_line)//如果该两交点来自多边形的同一边与圆的交点，则画两点两线
-					{
-						//该弧在多边形外
-						//该弧的两交点在一条多边形的边上
-						//画两交点的连线
+				//else//在多边形窗口外
+				//{
+				//	if(point_Array[j].num_line==point_Array[j+1].num_line)//如果该两交点来自多边形的同一边与圆的交点，则画两点两线
+				//	{
+				//		//该弧在多边形外
+				//		//该弧的两交点在一条多边形的边上
+				//		//画两交点的连线
 
-						dc.MoveTo(point_Array[j].point);
-						dc.LineTo(point_Array[j+1].point);
+				//		dc.MoveTo(point_Array[j].point);
+				//		dc.LineTo(point_Array[j+1].point);
 
-						
-					}	
-					//如果该两交点来自多边形的不同边与圆的交点，则应该画多边形的轮廓，但是为了节约时间，就不画了，反正不画轮廓就在那不离不弃....
-				}
+				//		
+				//	}	
+				//	//如果该两交点来自多边形的不同边与圆的交点，则应该画多边形的轮廓，但是为了节约时间，就不画了，反正不画轮廓就在那不离不弃....
+				//}
 			}
 		}
 
