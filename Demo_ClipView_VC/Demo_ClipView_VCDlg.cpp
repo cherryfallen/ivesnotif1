@@ -42,16 +42,17 @@ struct  _param   {
     //CClientDC dc(this);
 	};
 
-struct  _arc2draw   {  
+struct  _arc2draw   {  //这个结构是用于保存一个需要画的弧线
 	CRect rect;
 	CPoint start_point;
 	CPoint end_point;
 	};
-//用于存储需要画的线的全局变量的容器
-vector<Line> *lines_to_draw = new vector<Line>();
-vector<_arc2draw> *circles_to_draw = new vector<_arc2draw>();
 
-CRITICAL_SECTION g_cs;  //保护临界区
+//用于存储需要画的线的全局变量的容器
+vector<Line> *lines_to_draw = new vector<Line>();   //用于存储所有要画的线
+vector<_arc2draw> *circles_to_draw = new vector<_arc2draw>();  //用于存储所有要画的弧线
+
+CRITICAL_SECTION g_cs;  //声明保护临界区
 
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
@@ -72,7 +73,8 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	int nThreadLines=(int)(lines.size()/THREAD_NUMBER);
 	int nThreadCircles = (int)(circles.size()/THREAD_NUMBER);
 
-	BeginTimeAndMemoryMonitor();
+	CPen penUse;
+	InitializeCriticalSection(&g_cs);//初始化临界区变量
 
 	for(int i=0;i<(THREAD_NUMBER-1);i++){
 		for (int j = (i*nThreadLines); j < ((i+1)*nThreadLines); j++)
@@ -105,7 +107,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	
 	}
 
-	InitializeCriticalSection(&g_cs);
+	BeginTimeAndMemoryMonitor();
 
 	for (int i = 0;i<THREAD_NUMBER;i++)
 	{
@@ -119,15 +121,18 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		//WaitForSingleObject(thread_event[i],INFINITE);
 		WaitForSingleObject(hThead[i],INFINITE);
 	}
-	CPen penUse;
-    penUse.CreatePen(PS_SOLID, 1, clrLine);
+
+	//等待线程全部返回
+	
+    penUse.CreatePen(PS_SOLID, 1, clrLine);  //开始画线的代码
 	dc.SelectObject(&penUse);
 	for (int i = 0; i < (*lines_to_draw).size(); i++)
 	{
 		dc.MoveTo((*lines_to_draw)[i].startpoint);
 		dc.LineTo((*lines_to_draw)[i].endpoint);
 	}
-	penUse.CreatePen(PS_SOLID, 1, clrCircle);
+
+	penUse.CreatePen(PS_SOLID, 1, clrCircle);  //开始画圆的代码
 	dc.SelectObject(&penUse);
 	for (int i = 0; i < (*circles_to_draw).size(); i++)
 	{
@@ -135,7 +140,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	}
 	
 	EndTimeAndMemoryMonitor();
-	DeleteCriticalSection(&g_cs); 
+	DeleteCriticalSection(&g_cs); //程序完了  释放临界区变量
 }
 
 
