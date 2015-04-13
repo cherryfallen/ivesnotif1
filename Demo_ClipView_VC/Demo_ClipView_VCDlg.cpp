@@ -22,9 +22,14 @@ using namespace std;
 #define TESTDATA_XML2  "TestData2.xml"
 
 //如果为0，将不载入也不处理，以方便测试性能
-#define TEST_LINES 1
+#define TEST_LINES 0
 #define TEST_CIRCLES 1
 
+//是否绘出初始数据和裁剪结果，使用0来方便测试
+#define TEST_DRAW_INITIAL 0
+#define TEST_DRAW_ANSWER 0
+
+const int THREAD_NUMBER=1;
 //裁剪算法相关定义
 const int INTIALIZE=0;
 const double ESP=1e-5;
@@ -56,7 +61,7 @@ CRITICAL_SECTION g_cs;  //声明保护临界区
 
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
-	//以下为暂时的绘图代码
+
 	CClientDC dc(this);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 
@@ -65,7 +70,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	COLORREF clrLine = RGB(0,255,0);
 	COLORREF clrCircle = RGB(0,0,255);
-	//以上为暂时的绘图代码
+
 
 	HANDLE hThead[THREAD_NUMBER];     //用于存储线程句柄
 	DWORD  dwThreadID[THREAD_NUMBER]; //用于存储线程的ID
@@ -116,31 +121,37 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		
 
 	}
-	for (int i = 0; i < THREAD_NUMBER; i++)
-	{
-		//WaitForSingleObject(thread_event[i],INFINITE);
-		WaitForSingleObject(hThead[i],INFINITE);
-	}
+	//for (int i = 0; i < THREAD_NUMBER; i++)
+	//{
+	//	//WaitForSingleObject(thread_event[i],INFINITE);
+	//	WaitForSingleObject(hThead[i],INFINITE);
+	//}
 
+	WaitForMultipleObjects(THREAD_NUMBER,hThead,true,INFINITE);	
 	//等待线程全部返回
-	
-    penUse.CreatePen(PS_SOLID, 1, clrLine);  //开始画线的代码
-	dc.SelectObject(&penUse);
-	for (int i = 0; i < (*lines_to_draw).size(); i++)
+	if (TEST_DRAW_ANSWER)
 	{
-		dc.MoveTo((*lines_to_draw)[i].startpoint);
-		dc.LineTo((*lines_to_draw)[i].endpoint);
-	}
+		penUse.CreatePen(PS_SOLID, 1, clrLine);  //开始画线的代码
+		dc.SelectObject(&penUse);
+		for (int i = 0; i < (*lines_to_draw).size(); i++)
+		{
+			dc.MoveTo((*lines_to_draw)[i].startpoint);
+			dc.LineTo((*lines_to_draw)[i].endpoint);
+		}
 
-	penUse.CreatePen(PS_SOLID, 1, clrCircle);  //开始画圆的代码
-	dc.SelectObject(&penUse);
-	for (int i = 0; i < (*circles_to_draw).size(); i++)
-	{
-		dc.Arc(&((*circles_to_draw)[i].rect),(*circles_to_draw)[i].start_point,(*circles_to_draw)[i].end_point);
+		penUse.CreatePen(PS_SOLID, 1, clrCircle);  //开始画圆的代码
+		dc.SelectObject(&penUse);
+		for (int i = 0; i < (*circles_to_draw).size(); i++)
+		{
+			dc.Arc(&((*circles_to_draw)[i].rect),(*circles_to_draw)[i].start_point,(*circles_to_draw)[i].end_point);
+		}
 	}
-	
 	EndTimeAndMemoryMonitor();
+
 	DeleteCriticalSection(&g_cs); //程序完了  释放临界区变量
+	lines_to_draw->clear();
+	circles_to_draw->clear();
+
 }
 
 
@@ -151,9 +162,9 @@ DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc(LPVOID lpParam)
 	
 	if (TEST_LINES)
 	{
-		//if (Info->boundary.isConvex)
-		//	dealConvex(Info->thread_lines,Info->boundary,Info->dlg);
-		//else
+		if (Info->boundary.isConvex)
+			dealConvex(Info->thread_lines,Info->boundary,Info->dlg);
+		else
 			dealConcave(Info->thread_lines,Info->boundary,Info->dlg);
 	}
 	if (TEST_CIRCLES)
@@ -621,7 +632,12 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 		if (!haveIntersect)
 		{
 			if (dlg->isPointInBoundary(lines[i].startpoint))//如果在多边形内
-				dlg->DrawLine(lines[i],clrLine);
+				//dlg->DrawLine(lines[i],clrLine);
+			{
+				EnterCriticalSection(&g_cs); 
+				(*lines_to_draw).push_back(lines[i]);
+				LeaveCriticalSection(&g_cs); 
+			}
 			continue;
 		}
 
@@ -1388,7 +1404,8 @@ void CDemo_ClipView_VCDlg::BeginTimeAndMemoryMonitor()
 	PROCESS_MEMORY_COUNTERS pmc;    
 	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
 	startMemory = pmc.PagefileUsage;
-	startTime = clock();
+	//startTime = clock();
+	precise_start();
 }
 void CDemo_ClipView_VCDlg::EndTimeAndMemoryMonitor()
 {
@@ -1397,7 +1414,8 @@ void CDemo_ClipView_VCDlg::EndTimeAndMemoryMonitor()
 	PROCESS_MEMORY_COUNTERS pmc;    
 	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
 	endMemory = pmc.PagefileUsage;
-	double useTimeS = (endTime - startTime)/1000;
+	//double useTimeS = (endTime - startTime)/1000;
+	double useTimeS=precise_stop();
 	double useMemoryM = (endMemory - startMemory)/1024/1024;
 	m_stc_drawing.SetWindowText("裁剪完毕！");
 	m_stc_info1.ShowWindow(SW_SHOW);
@@ -1423,18 +1441,21 @@ void CDemo_ClipView_VCDlg::DrawTestCase(CString xmlPath, CString caseID)
 		return;
 	}
 
-	COLORREF clrLine = RGB(0,255,0);
-	vector<Line>::iterator iterLine = lines.begin();
-	for (;iterLine != lines.end(); iterLine++)
+	if (TEST_DRAW_INITIAL)
 	{
-		DrawLine(*iterLine, clrLine);
-	}
+		COLORREF clrLine = RGB(0,255,0);
+		vector<Line>::iterator iterLine = lines.begin();
+		for (;iterLine != lines.end(); iterLine++)
+		{
+			DrawLine(*iterLine, clrLine);
+		}
 
-	COLORREF clrCircle = RGB(0,0,255);
-	vector<Circle>::iterator iterCircle = circles.begin();
-	for (;iterCircle != circles.end(); iterCircle++)
-	{
-		DrawCircle(*iterCircle, clrCircle);
+		COLORREF clrCircle = RGB(0,0,255);
+		vector<Circle>::iterator iterCircle = circles.begin();
+		for (;iterCircle != circles.end(); iterCircle++)
+		{
+			DrawCircle(*iterCircle, clrCircle);
+		}
 	}
 
 	COLORREF clrBoundary = RGB(255,0,0);

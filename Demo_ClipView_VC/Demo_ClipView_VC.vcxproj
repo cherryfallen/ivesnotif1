@@ -104,6 +104,7 @@
     <ClInclude Include="Demo_ClipView_VC.h" />
     <ClInclude Include="Demo_ClipView_VCDlg.h" />
     <ClInclude Include="GraphicEntity.h" />
+    <ClInclude Include="precise.h" />
     <ClInclude Include="pugiconfig.hpp" />
     <ClInclude Include="pugixml.hpp" />
     <ClInclude Include="Resource.h" />
@@ -113,6 +114,7 @@
   <ItemGroup>
     <ClCompile Include="Demo_ClipView_VC.cpp" />
     <ClCompile Include="Demo_ClipView_VCDlg.cpp" />
+    <ClCompile Include="precise.cpp" />
     <ClCompile Include="pugixml.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

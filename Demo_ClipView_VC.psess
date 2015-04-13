@@ -36,7 +36,7 @@
   </PostinstrumentEvent>
   <Binaries>
     <ProjBinary>
-      <Path>Debug\Demo_ClipView_VC.exe</Path>
+      <Path>Release\Demo_ClipView_VC.exe</Path>
       <ArgumentTimestamp>01/01/0001 00:00:00</ArgumentTimestamp>
       <Instrument>true</Instrument>
       <Sample>true</Sample>
@@ -48,7 +48,7 @@
       <LaunchProject>true</LaunchProject>
       <OverrideProjectSettings>false</OverrideProjectSettings>
       <LaunchMethod>Executable</LaunchMethod>
-      <ExecutablePath>Debug\Demo_ClipView_VC.exe</ExecutablePath>
+      <ExecutablePath>Release\Demo_ClipView_VC.exe</ExecutablePath>
       <StartupDirectory>Demo_ClipView_VC\</StartupDirectory>
       <Arguments>
       </Arguments>
@@ -76,6 +76,9 @@
     </Report>
     <Report>
       <Path>Demo_ClipView_VC150401.vsp</Path>
+    </Report>
+    <Report>
+      <Path>Demo_ClipView_VC150407.vsp</Path>
     </Report>
   </Reports>
   <Launches>

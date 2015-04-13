@@ -51,6 +51,9 @@
     <ClInclude Include="GraphicEntity.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="precise.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Demo_ClipView_VC.cpp">
@@ -64,6 +67,9 @@
     </ClCompile>
     <ClCompile Include="pugixml.cpp">
       <Filter>引用库</Filter>
+    </ClCompile>
+    <ClCompile Include="precise.cpp">
+      <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

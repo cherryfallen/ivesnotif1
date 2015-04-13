@@ -13,7 +13,7 @@ using std::vector;
 #include "afxwin.h"
 #include <algorithm>
 #pragma comment(lib,"psapi.lib")
-
+#include "precise.h"
 
 struct r_lineNum
 {
@@ -25,7 +25,6 @@ struct Vector
 	double x,y;
 };
 
-const int THREAD_NUMBER=8;
 
 // CDemo_ClipView_VCDlg ¶Ô»°¿ò
 class CDemo_ClipView_VCDlg : public CDialogEx
