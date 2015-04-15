@@ -22,174 +22,213 @@ using namespace std;
 #define TESTDATA_XML2  "TestData2.xml"
 
 //如果为0，将不载入也不处理，以方便测试性能
-#define TEST_LINES 0
-#define TEST_CIRCLES 1
+#define TEST_LINES 1
+#define TEST_CIRCLES 0
 
 //是否绘出初始数据和裁剪结果，使用0来方便测试
-#define TEST_DRAW_INITIAL 0
-#define TEST_DRAW_ANSWER 0
+#define TEST_DRAW_INITIAL 1
+#define TEST_DRAW_ANSWER 1
 
-const int THREAD_NUMBER=1;
+#define MAX_THREAD_NUMBER 16
+
 //裁剪算法相关定义
 const int INTIALIZE=0;
 const double ESP=1e-5;
 
 
+struct ThreadTime
+{
+	int i;
+	double time;
+};
+
+//记录每个线程所花的时间
+vector<ThreadTime> thread_use_time;
+
+//开始裁剪时的clock值
+double startclock;
+
 /////////////////////////////////////
 // main part begins
 
 struct  _param   {  
-    vector<Line> thread_lines;
+	vector<Line> thread_lines;
 	vector<Circle> thread_circles;
-    Boundary boundary;
-	CDemo_ClipView_VCDlg* dlg;
+	Boundary boundary;
+	//CDemo_ClipView_VCDlg* dlg;
 	int i;
-    //CClientDC dc(this);
-	};
+	//CClientDC dc(this);
+};
 
 struct  _arc2draw   {  //这个结构是用于保存一个需要画的弧线
 	CRect rect;
 	CPoint start_point;
 	CPoint end_point;
-	};
+};
+
+vector<Line> lines;
+vector<Circle> circles;
+Boundary boundary;
 
 //用于存储需要画的线的全局变量的容器
-vector<Line> *lines_to_draw = new vector<Line>();   //用于存储所有要画的线
-vector<_arc2draw> *circles_to_draw = new vector<_arc2draw>();  //用于存储所有要画的弧线
+vector<Line> lines_to_draw;   //用于存储所有要画的线
+vector<_arc2draw> circles_to_draw;  //用于存储所有要画的弧线
+vector<Line> sbLines;
 
 CRITICAL_SECTION g_cs;  //声明保护临界区
 
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
+	lines_to_draw.reserve(2*lines.size());
+	circles_to_draw.reserve(2*circles.size());
+
+	//Line l;
+	//CPoint s,e;
+	//lines.clear();
+	//s.x=180;
+	//s.y=320;
+	//e.x=450;
+	//e.y=188;
+	//l.startpoint=s;
+	//l.endpoint=e;
+	//lines.push_back(l);
+
+	/*SYSTEM_INFO info;
+	GetSystemInfo(&info);
+	int THREAD_NUMBER=info.dwNumberOfProcessors;
+	if (THREAD_NUMBER>MAX_THREAD_NUMBER)
+		THREAD_NUMBER=MAX_THREAD_NUMBER;*/
+	int THREAD_NUMBER=1;
 
 	CClientDC dc(this);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 
 	COLORREF clrBoundary = RGB(255,0,0);
-	DrawBoundary(boundary, clrBoundary);
-
 	COLORREF clrLine = RGB(0,255,0);
 	COLORREF clrCircle = RGB(0,0,255);
+	CPen penLine,penCircle;
+	penLine.CreatePen(PS_SOLID, 1, clrLine);
+	penCircle.CreatePen(PS_SOLID, 1, clrCircle);
+
+	DrawBoundary(boundary, clrBoundary);
 
 
-	HANDLE hThead[THREAD_NUMBER];     //用于存储线程句柄
-	DWORD  dwThreadID[THREAD_NUMBER]; //用于存储线程的ID
-	_param* Info = new _param[THREAD_NUMBER]; //传递给线程处理函数的参数
+	HANDLE hThead[MAX_THREAD_NUMBER];     //用于存储线程句柄
+	DWORD  dwThreadID[MAX_THREAD_NUMBER]; //用于存储线程的ID
+	_param* Info = new _param[MAX_THREAD_NUMBER]; //传递给线程处理函数的参数
 	int nThreadLines=(int)(lines.size()/THREAD_NUMBER);
 	int nThreadCircles = (int)(circles.size()/THREAD_NUMBER);
 
-	CPen penUse;
 	InitializeCriticalSection(&g_cs);//初始化临界区变量
 
-	for(int i=0;i<(THREAD_NUMBER-1);i++){
-		for (int j = (i*nThreadLines); j < ((i+1)*nThreadLines); j++)
-		{
+	for(int i=0;i<THREAD_NUMBER;i++){
+		int upperNumber=(i+1)*nThreadLines;
+		if (i==THREAD_NUMBER-1)
+			upperNumber=lines.size();
+		for (int j = i*nThreadLines; j < upperNumber; j++)
 			Info[i].thread_lines.push_back(lines[j]);
-		}
-		for (int j = (i*nThreadCircles); j < ((i+1)*nThreadCircles); j++)
-		{
-			Info[i].thread_circles.push_back(circles[j]);
-		}
-		
-		Info[i].dlg = this;	
-		Info[i].i = i;
-	}
-	for (int j = ((THREAD_NUMBER-1)*nThreadLines); j <lines.size(); j++)
-	{
-		Info[THREAD_NUMBER-1].thread_lines.push_back(lines[j]);
-	}
-	for (int j = ((THREAD_NUMBER-1)*nThreadCircles); j <circles.size(); j++)
-	{
-		Info[THREAD_NUMBER-1].thread_circles.push_back(circles[j]);
-	}
-	Info[THREAD_NUMBER-1].dlg = this;	
-	Info[THREAD_NUMBER-1].i = THREAD_NUMBER-1;	
 
-	for (int i = 0;  i<THREAD_NUMBER; i++)
-	{
-			
-			Info[i].boundary = boundary;
-	
+		upperNumber=(i+1)*nThreadCircles;
+		if (i==THREAD_NUMBER-1)
+			upperNumber=circles.size();
+		for (int j = i*nThreadCircles; j < upperNumber; j++)
+			Info[i].thread_circles.push_back(circles[j]);
+
+		//Info[i].dlg = this;	
+		Info[i].i = i;
+		Info[i].boundary = boundary;
 	}
+
+	//Info[THREAD_NUMBER-1].dlg = this;
 
 	BeginTimeAndMemoryMonitor();
 
+	startclock=clock();
+
 	for (int i = 0;i<THREAD_NUMBER;i++)
 	{
-
 		hThead[i] = CreateThread(NULL,0,ThreadProc,&Info[i],0,&(dwThreadID[i]));
-		
-
+		SetThreadAffinityMask(hThead[i],i+1);
 	}
-	//for (int i = 0; i < THREAD_NUMBER; i++)
-	//{
-	//	//WaitForSingleObject(thread_event[i],INFINITE);
-	//	WaitForSingleObject(hThead[i],INFINITE);
-	//}
 
-	WaitForMultipleObjects(THREAD_NUMBER,hThead,true,INFINITE);	
+	//for (int i = 0; i < THREAD_NUMBER; i++)
+	//	WaitForSingleObject(hThead[i],INFINITE);
+
 	//等待线程全部返回
+	WaitForMultipleObjects(THREAD_NUMBER,hThead,true,INFINITE);	
+
 	if (TEST_DRAW_ANSWER)
 	{
-		penUse.CreatePen(PS_SOLID, 1, clrLine);  //开始画线的代码
-		dc.SelectObject(&penUse);
-		for (int i = 0; i < (*lines_to_draw).size(); i++)
+		//开始画线的代码
+		dc.SelectObject(&penLine);
+		for (vector<Line>::iterator iter=lines_to_draw.begin();iter!=lines_to_draw.end(); iter++)
 		{
-			dc.MoveTo((*lines_to_draw)[i].startpoint);
-			dc.LineTo((*lines_to_draw)[i].endpoint);
+			dc.MoveTo((*iter).startpoint);
+			dc.LineTo((*iter).endpoint);
 		}
 
-		penUse.CreatePen(PS_SOLID, 1, clrCircle);  //开始画圆的代码
-		dc.SelectObject(&penUse);
-		for (int i = 0; i < (*circles_to_draw).size(); i++)
-		{
-			dc.Arc(&((*circles_to_draw)[i].rect),(*circles_to_draw)[i].start_point,(*circles_to_draw)[i].end_point);
-		}
+		//开始画圆的代码
+		dc.SelectObject(&penCircle);
+		for (vector<_arc2draw>::iterator iter=circles_to_draw.begin();iter!=circles_to_draw.end(); iter++)
+			dc.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
 	}
+
 	EndTimeAndMemoryMonitor();
 
 	DeleteCriticalSection(&g_cs); //程序完了  释放临界区变量
-	lines_to_draw->clear();
-	circles_to_draw->clear();
 
+	lines_to_draw.clear();
+	circles_to_draw.clear();
+	penLine.DeleteObject();
+	penCircle.DeleteObject();
 }
 
 
 DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc(LPVOID lpParam)  
 {  
-	COLORREF clrLine = RGB(0,255,0);
-    _param  * Info = ( _param *)lpParam; 
-	
+
+	_param  * Info = ( _param *)lpParam; 
+
+	double starttime=clock();
+	ThreadTime a;
+	a.i=Info->i;
+	a.time=1.0*(starttime-startclock)/CLOCKS_PER_SEC;
+	thread_use_time.push_back(a);
+
 	if (TEST_LINES)
 	{
 		if (Info->boundary.isConvex)
-			dealConvex(Info->thread_lines,Info->boundary,Info->dlg);
+			dealConvex(Info->thread_lines,Info->boundary);
 		else
-			dealConcave(Info->thread_lines,Info->boundary,Info->dlg);
+			dealConcave(Info->thread_lines,Info->boundary);
 	}
 	if (TEST_CIRCLES)
-		forCircleRun(Info->thread_circles,Info->boundary,Info->dlg);
+		forCircleRun(Info->thread_circles,Info->boundary);
+
 	//thread_event[Info->i].SetEvent();
-    return 0;  
+
+	double endtime=clock();
+	a.i=Info->i;
+	a.time=1.0*(endtime-startclock)/CLOCKS_PER_SEC;
+	thread_use_time.push_back(a);
+	//thread_use_time.push_back(1.0*(endtime-starttime)/CLOCKS_PER_SEC);
+
+	return 0;  
 }  
 // main part ends
 /////////////////////////////////////////
 
 
 
-
-
-//Tip: You can use Ctrl+F to search one of the following words to get to your codes quickly:   GS   XH   DQC
-
-
 //////////////////////////////////
-// GS's codes begin
+// 凸多边形线裁剪算法 开始
 
-
-//功能：判断线段是否在包围盒里，若在包围盒里则返回true，否则返回false
-//形参：boundary为裁剪边界  line为所判断的线段
-//思路：遍历多边形的顶点，以最小的x,y和最大的x,y值分别为包围盒的对角线端点
-bool CDemo_ClipView_VCDlg::InBox(Line& line){
+/*
+*功能：判断线段是否在包围盒里，若在包围盒里则返回true，否则返回false
+*参数：boundary为裁剪边界  line为所判断的线段
+*思路：遍历多边形的顶点，以最小的x,y和最大的x,y值分别为包围盒的对角线端点
+*/
+bool InBox(Line& line){
 	bool isVisible=true;
 	int xl=INTIALIZE,xr=-INTIALIZE,yt=-INTIALIZE,yb=INTIALIZE; //对包围盒的边界值进行初始化
 	int n=boundary.vertexs.size();
@@ -206,23 +245,27 @@ bool CDemo_ClipView_VCDlg::InBox(Line& line){
 	else return true;
 }
 
-//功能：过点(x1,y1)(x2,y2)一般式直线方程为(y2-y1)x+(x1-x2)y+x2y1-x1y2=0，根据上述多项式判断(x,y)与(x1,y1)(x,2,y2)线段的位置,返回多项式值
-//形参：(x1,y1),(x2,y2)为该线段两端端点的坐标值  (x,y）为所判断的点的坐标值
-//思路：将被判断的点的坐标代入多项式中，得知其正负号
-int CDemo_ClipView_VCDlg::Multinomial(int x1,int y1,int x2,int y2,int x,int y){
+/*
+*功能：过点(x1,y1)(x2,y2)一般式直线方程为(y2-y1)x+(x1-x2)y+x2y1-x1y2=0，根据上述多项式判断(x,y)与(x1,y1)(x,2,y2)线段的位置,返回多项式值
+*参数：(x1,y1),(x2,y2)为该线段两端端点的坐标值  (x,y）为所判断的点的坐标值
+*思路：将被判断的点的坐标代入多项式中，得知其正负号
+*/
+int Multinomial(int x1,int y1,int x2,int y2,int x,int y){
 	int result=(y2-y1)*x+(x1-x2)*y+x2*y1-x1*y2;
 	return result;
 }
 
-//功能：返回line1,line2两条直线的交点
-//思路：根据直线的一般式方程，求直线直接的交点
-CPoint CDemo_ClipView_VCDlg::CrossPoint(Line& line1,Line& line2){
+/*
+*功能：返回line1,line2两条直线的交点
+*思路：根据直线的一般式方程，求直线直接的交点
+*/
+CPoint CrossPoint(Line& line1,Line& line2){
 	CPoint CrossP;
 	int a1 = line1.endpoint.y-line1.startpoint.y;
 	int b1 = line1.startpoint.x-line1.endpoint.x;
 	int c1 = line1.endpoint.x*line1.startpoint.y-line1.startpoint.x*line1.endpoint.y;
 
-    int a2 = line2.endpoint.y-line2.startpoint.y;
+	int a2 = line2.endpoint.y-line2.startpoint.y;
 	int b2 = line2.startpoint.x-line2.endpoint.x;
 	int c2 = line2.endpoint.x*line2.startpoint.y-line2.startpoint.x*line2.endpoint.y;
 
@@ -242,21 +285,25 @@ CPoint CDemo_ClipView_VCDlg::CrossPoint(Line& line1,Line& line2){
 		}
 	}
 
-    return CrossP;	
+	return CrossP;	
 }
 
-//功能：判断点pt是否在线line上，若在线上则返回true，否则返回false
-//思路：将该直线的两个端点和被判断的端点传入Multinomial()函数中，若此多项式值为0则说明点在线段上
-bool CDemo_ClipView_VCDlg::IsOnline(CPoint& pt,Line& line){
+/*
+*功能：判断点pt是否在线line上，若在线上则返回true，否则返回false
+*思路：将该直线的两个端点和被判断的端点传入Multinomial()函数中，若此多项式值为0则说明点在线段上
+*/
+bool IsOnline(CPoint& pt,Line& line){
 	if(Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt.x,pt.y)==0)
 		return 1;
 	else 
 		return 0;
 }
 
-//功能：判断由pt1,pt2两个端点所在线段与线段line是否相交，若相交则返回true，否则返回false
-//思路：分别将pt1,line的两个端点和pt2，line的两个端点传入Multinomial()函数中，若返回的两个多项式值异号则说明pt1,pt2所在线段和line相交
-bool CDemo_ClipView_VCDlg::Intersect(CPoint& pt1,CPoint& pt2,Line& line){
+/*
+*功能：判断由pt1,pt2两个端点所在线段与线段line是否相交，若相交则返回true，否则返回false
+*思路：分别将pt1,line的两个端点和pt2，line的两个端点传入Multinomial()函数中，若返回的两个多项式值异号则说明pt1,pt2所在线段和line相交
+*/
+bool Intersect(CPoint& pt1,CPoint& pt2,Line& line){
 	int a1=Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt1.x,pt1.y);
 	int a2=Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt2.x,pt2.y);
 	if((a1<0&&a2>0)||(a1>0&&a2<0))
@@ -265,9 +312,11 @@ bool CDemo_ClipView_VCDlg::Intersect(CPoint& pt1,CPoint& pt2,Line& line){
 		return 0;
 }
 
-//功能：传入裁剪边界boundary和被裁剪线段line.返回裁剪后所显示线段
-//思路：根据点与多边形的位置，计算出需要显示线段的端点，得出显示线段
-Line CDemo_ClipView_VCDlg::result(Line& line){
+/*
+*功能：传入裁剪边界boundary和被裁剪线段line.返回裁剪后所显示线段
+*思路：根据点与多边形的位置，计算出需要显示线段的端点，得出显示线段
+*/
+Line result(Line& line){
 	Line line_result;
 	line_result.startpoint.x=line_result.startpoint.y=INTIALIZE;
 	line_result.endpoint.x=line_result.endpoint.y=INTIALIZE;
@@ -276,7 +325,7 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 
 	bool bept=isPointInBoundary(line.endpoint);  //endpoint是否在多边形内，若是返回值为true
 	//若两点都在多边形内则绘制该直线
- 	if(bspt&&bept)
+	if(bspt&&bept)
 		return line; 
 	//若startpoint在多边形内，但endpoint在多边形外
 	else if((bspt&&(!bept))||((!bspt)&&bept)){
@@ -284,7 +333,7 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 			line_result.startpoint=line.startpoint;
 		else if((!bspt)&&bept)
 			line_result.startpoint=line.endpoint;
-		
+
 		//求交点
 		int n=boundary.vertexs.size();
 		int i=0;
@@ -297,8 +346,8 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 				CPoint p=CrossPoint(line,side);
 				if(p.x<=max(line.startpoint.x,line.endpoint.x)&&p.x>=min(line.startpoint.x,line.endpoint.x)
 					&&p.y<=max(line.startpoint.y,line.endpoint.y)&&p.y>=min(line.startpoint.y,line.endpoint.y)){
-							line_result.endpoint=CrossPoint(line,side);
-							break;
+						line_result.endpoint=CrossPoint(line,side);
+						break;
 				}
 				else i++;
 			}
@@ -306,29 +355,6 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 		}
 		return line_result;
 	}
-	//若startpoint在多边形外，但endpoint在多边形内
-	//else if((!bspt)&&bept){
-	//	line_result.startpoint=line.endpoint;
-	//	//求交点
-	//	int n=boundary.vertexs.size();
-	//	int i=0;
-	//	while(i<n-1){
-	//		Line side;
-	//		side.startpoint=boundary.vertexs[i];
-	//		side.endpoint=boundary.vertexs[(i+1)%n];
-	//		if(Intersect(side.startpoint,side.endpoint,line)){
-	//			CPoint p=CrossPoint(line,side);
-	//			if(p.x<=max(line.startpoint.x,line.endpoint.x)&&p.x>=min(line.startpoint.x,line.endpoint.x)
-	//				&&p.y<=max(line.startpoint.y,line.endpoint.y)&&p.y>=min(line.startpoint.y,line.endpoint.y)){
-	//						line_result.endpoint=CrossPoint(line,side);
-	//						break;
-	//			}
-	//			else i++;
-	//		}
-	//		else i++;
-	//	}
-	//	return line_result;
-	//}
 	//startpoint和endpoint均在多边形外
 	else if((!bspt)&&(!bept)){
 		int n=boundary.vertexs.size();
@@ -343,8 +369,8 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 				if(p.x<=max(line.startpoint.x,line.endpoint.x)&&p.x>=min(line.startpoint.x,line.endpoint.x)
 					&&p.y<=max(line.startpoint.y,line.endpoint.y)&&p.y>=min(line.startpoint.y,line.endpoint.y)){
 						line_result.startpoint=p;
-				        nCrossPoint++;
-				        i++;
+						nCrossPoint++;
+						i++;
 				}
 				else i++;
 			}
@@ -353,8 +379,8 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 				if(p.x<=max(line.startpoint.x,line.endpoint.x)&&p.x>=min(line.startpoint.x,line.endpoint.x)
 					&&p.y<=max(line.startpoint.y,line.endpoint.y)&&p.y>=min(line.startpoint.y,line.endpoint.y)){
 						line_result.endpoint=p;
-				        nCrossPoint++;
-				        i++;
+						nCrossPoint++;
+						i++;
 				}
 				else i++;
 			}
@@ -365,56 +391,46 @@ Line CDemo_ClipView_VCDlg::result(Line& line){
 }
 
 
-void CDemo_ClipView_VCDlg::dealConvex(vector<Line>& lines,Boundary& boundary,CDemo_ClipView_VCDlg* dlg)
+void dealConvex(vector<Line>& lines,Boundary& boundary)
 {
-
-	//TODO 在此处完成裁剪算法和裁剪后显示程序
-	
-	//以下为暂时的绘图代码
-	/*CClientDC dc(dlg);
-	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
-	COLORREF clrBoundary = RGB(255,0,0);
-	dlg->DrawBoundary(boundary, clrBoundary);
-	COLORREF clrLine = RGB(0,255,0);*/
-	
-	//此处处理的是凸多边形窗口百万级线段
+	//此处处理的是凸多边形窗口
 	for(int i=0;i<lines.size();i++){
 		//先判断线段是否在包围盒内，若明显不在则不显示该线段，否则继续以下步骤
-		if(dlg->InBox(lines[i])){
-			Line line=dlg->result(lines[i]);
-			(*lines_to_draw).push_back(line);
+		if(InBox(lines[i])){
+			Line line=result(lines[i]);
+			lines_to_draw.push_back(line);
 			/*if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
-				dlg->DrawLine(line,clrLine);*/
+			dlg->DrawLine(line,clrLine);*/
 		}
 	}
-    //ClearTestLines();
+	//ClearTestLines();
 }
 
-// GS's codes end
-/////////////////////////////////
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	
+// 凸多边形线裁剪算法 结束
 //////////////////////////////////
-// DQC's codes begin
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//////////////////////////////////
+// 任意多边形线裁剪算法 开始
 
 /*
-	功能：计算两个向量的叉积
-	参数：a1,a2为第一个向量的起点与终点，b1,b2为第二个向量的起点与终点
+*功能：计算两个向量的叉积
+*参数：a1,a2为第一个向量的起点与终点，b1,b2为第二个向量的起点与终点
 */
-int CDemo_ClipView_VCDlg::CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
+int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 {
 	int ux=a2.x-a1.x;
 	int uy=a2.y-a1.y;
@@ -424,8 +440,8 @@ int CDemo_ClipView_VCDlg::CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 }
 
 /*
-	功能：用于交点排序的比较函数（按t值得从小到大排序）
-	参数：a,b分别为两个交点
+*功能：用于交点排序的比较函数（按t值得从小到大排序）
+*参数：a,b分别为两个交点
 */
 bool Compare(IntersectPoint a,IntersectPoint b)
 {
@@ -436,11 +452,11 @@ bool Compare(IntersectPoint a,IntersectPoint b)
 }
 
 /*
-	功能：判断多边形每个点是凹点还是凸点
-	思路：求相邻两边的向量的叉积，已知凸点的值与凹点的值正负性不同，并且x坐标最大的点一定是凸点。
-		  先计算相邻两边的向量的叉积并保存，同时找出x最大的点。再通过与x最大的点比较正负性得出点的凹凸性。
+*功能：判断多边形每个点是凹点还是凸点
+*思路：求相邻两边的向量的叉积，已知凸点的值与凹点的值正负性不同，并且x坐标最大的点一定是凸点。
+*	   先计算相邻两边的向量的叉积并保存，同时找出x最大的点。再通过与x最大的点比较正负性得出点的凹凸性。
 */
-void CDemo_ClipView_VCDlg::JudgeConvexPoint(vector<BOOL>& convexPoint)
+void JudgeConvexPoint(vector<BOOL>& convexPoint)
 {
 	int dotnum=boundary.vertexs.size()-1;//多边形顶点数
 	vector<int> z;
@@ -475,12 +491,12 @@ void CDemo_ClipView_VCDlg::JudgeConvexPoint(vector<BOOL>& convexPoint)
 }
 
 /*
-	功能：计算多边形的边的内法向量
-	思路：绕多边形的边界依次计算。对于某一条边，先随意构造出一个与当前边垂直的法向量。
-		  若该法向量与前一条边的向量的点积为正，则将法向量反向。
-		  如果这两条边的公共顶点为凹点，则将该法向量再反向。
+*功能：计算多边形的边的内法向量
+*思路：绕多边形的边界依次计算。对于某一条边，先随意构造出一个与当前边垂直的法向量。
+*	   若该法向量与前一条边的向量的点积为正，则将法向量反向。
+*	   如果这两条边的公共顶点为凹点，则将该法向量再反向。
 */
-void CDemo_ClipView_VCDlg::ComputeNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
+void ComputeNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
 {
 	int edgenum=boundary.vertexs.size()-1;//多边形边数
 
@@ -527,14 +543,14 @@ void CDemo_ClipView_VCDlg::ComputeNormalVector(vector<Vector>& normalVector,vect
 
 
 /*
-	函数：处理凹多边形的裁剪
-	思路：先预处理判断出每个点的凹凸性，算出所有多边形的边的外矩形框。
-		  然后枚举每条线段与每条多边形的边，先通过快速排除法排除明显不可能相交的边，再通过跨立试验进一步判断是否有交点。
-		  接着用改进的cyrus-beck算法算出交点的值，以及交点的性质（出点还是入点），并将线段的起点作为入点，终点作为出点。
-		  然后处理当线段与多边形的顶点相交的特殊情况。
-		  最后寻找所有符合“入点-出点”的线段作为显示的线段。
+*功能：处理凹多边形的裁剪
+*思路：先预处理判断出每个点的凹凸性，算出所有多边形的边的外矩形框。
+*	   然后枚举每条线段与每条多边形的边，先通过快速排除法排除明显不可能相交的边，再通过跨立试验进一步判断是否有交点。
+*	   接着用改进的cyrus-beck算法算出交点的值，以及交点的性质（出点还是入点），并将线段的起点作为入点，终点作为出点。
+*	   然后处理当线段与多边形的顶点相交的特殊情况。
+*	   最后寻找所有符合“入点-出点”的线段作为显示的线段。
 */
-void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CDemo_ClipView_VCDlg* dlg)
+void dealConcave(vector<Line>& lines,Boundary& boundary)
 {
 	//TODO 在此处完成裁剪算法和裁剪后显示程序
 	COLORREF clrLine = RGB(0,255,0);
@@ -542,9 +558,14 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 	vector<RECT> edgeRect;//多边形的边的外矩形框
 	vector<Vector> normalVector;//多边形的边的内法向量
 	vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
-	dlg->JudgeConvexPoint(convexPoint);
-	dlg->ComputeNormalVector(normalVector,convexPoint);
+	JudgeConvexPoint(convexPoint);
+	ComputeNormalVector(normalVector,convexPoint);
 
+	RECT whole;
+	whole.left=100000;
+	whole.right=-1;
+	whole.top=-1;
+	whole.bottom=10000;
 	//先算出所有多边形的边的外矩形框
 	int edgenum=boundary.vertexs.size()-1;
 	for (int i=0;i<edgenum;i++)
@@ -554,6 +575,11 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 		r.top=max(boundary.vertexs[i].y,boundary.vertexs[i+1].y);
 		r.left=min(boundary.vertexs[i].x,boundary.vertexs[i+1].x);
 		r.right=max(boundary.vertexs[i].x,boundary.vertexs[i+1].x);
+
+		if (r.bottom<whole.bottom) whole.bottom=r.bottom;
+		if (r.top>whole.top) whole.top=r.top;
+		if (r.left<whole.left) whole.left=r.left;
+		if (r.right>whole.right) whole.right=r.right;
 		edgeRect.push_back(r);
 	}
 
@@ -590,8 +616,8 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 			CPoint q2=lines[i].endpoint;//q1q2为线段
 
 
-			long long a= ((long long)dlg->CrossMulti(p1,q1,p1,p2)) * (dlg->CrossMulti(p1,p2,p1,q2));
-			long long b= ((long long)dlg->CrossMulti(q1,p1,q1,q2)) * (dlg->CrossMulti(q1,q2,q1,p2));
+			long long a= ((long long)CrossMulti(p1,q1,p1,p2)) * (CrossMulti(p1,p2,p1,q2));
+			long long b= ((long long)CrossMulti(q1,p1,q1,q2)) * (CrossMulti(q1,q2,q1,p2));
 			if (!(a>=0 && b>=0))//不相交就跳过这条边
 				continue;
 
@@ -615,9 +641,9 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 					ip.isIntoPoly=false;
 				ip.t=t;
 				ip.point=pt;
-				ip.convexPointNum=j;
+				ip.contexPoint=j;
 				intersectPoint.push_back(ip);
-				
+
 				haveIntersect=true;
 			}
 			else
@@ -627,15 +653,15 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 			}
 		}
 
-		
+
 		//没有交点
 		if (!haveIntersect)
 		{
-			if (dlg->isPointInBoundary(lines[i].startpoint))//如果在多边形内
+			if (isPointInBoundary(lines[i].startpoint))//如果在多边形内
 				//dlg->DrawLine(lines[i],clrLine);
 			{
 				EnterCriticalSection(&g_cs); 
-				(*lines_to_draw).push_back(lines[i]);
+				lines_to_draw.push_back(lines[i]);
 				LeaveCriticalSection(&g_cs); 
 			}
 			continue;
@@ -658,12 +684,17 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 			if ( ((*iter).isIntoPoly ^ (*(iter+1)).isIntoPoly )
 				&&abs((*iter).t-(*(iter+1)).t)<1e-9)  
 			{
-				if (convexPoint[(*iter).convexPointNum+1]&& !(*iter).isIntoPoly)
+				//得到该顶点序号
+				int contexPointNumber=max((*iter).contexPoint,(*(iter+1)).contexPoint);
+				if (((*iter).contexPoint==edgenum-1 && (*(iter+1)).contexPoint==0)||((*(iter+1)).contexPoint==edgenum-1 && (*iter).contexPoint==0))
+					contexPointNumber=0;
+
+				if (convexPoint[contexPointNumber]&& !(*iter).isIntoPoly)//如果是凸点，安排为先进后出
 				{
 					(*iter).isIntoPoly=true;
 					(*(iter+1)).isIntoPoly=false;
 				}
-				else if (!convexPoint[(*iter).convexPointNum+1] && (*iter).isIntoPoly)
+				else if (!convexPoint[contexPointNumber] && (*iter).isIntoPoly)//如果是凹点，安排为先出后进
 				{
 					(*iter).isIntoPoly=false;
 					(*(iter+1)).isIntoPoly=true;
@@ -672,28 +703,44 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 			}
 
 
-		//以下为绘图代码
+		//保存交点
 		int size=(int)intersectPoint.size()-1;
-		for (int i=0;i<size;i++)
+		for (int j=0;j<size;j++)
 		{
-			if (intersectPoint[i].isIntoPoly && !intersectPoint[i+1].isIntoPoly)
+			if (intersectPoint[j].isIntoPoly && !intersectPoint[j+1].isIntoPoly)
 			{
 				Line l;
-				l.startpoint=intersectPoint[i].point;
-				l.endpoint=intersectPoint[i+1].point;
+				l.startpoint=intersectPoint[j].point;
+				l.endpoint=intersectPoint[j+1].point;
+				/*if (!isPointInBoundary(l.startpoint) || !isPointInBoundary(l.endpoint))
+				{
+					EnterCriticalSection(&g_cs); 
+					sbLines.push_back(l);
+					LeaveCriticalSection(&g_cs); 
+					continue;
+				}*/
+				//if (l.startpoint.x<whole.left || l.startpoint.x>whole.right || l.startpoint.y<whole.bottom || l.startpoint.y>whole.top
+				//	||l.endpoint.x<whole.left || l.endpoint.x>whole.right || l.endpoint.y<whole.bottom || l.endpoint.y>whole.top)
+				//{
+				//	EnterCriticalSection(&g_cs); 
+				//	sbLines.push_back(lines[i]);
+				//	LeaveCriticalSection(&g_cs); 
+				//	continue;
+				//}
+
 				EnterCriticalSection(&g_cs); 
-				(*lines_to_draw).push_back(l);
+				lines_to_draw.push_back(l);
 				LeaveCriticalSection(&g_cs); 
 				/*dlg->DrawLine(l,clrLine);*/
-				i++;
+				j++;
 			}
 		}
-		//以上为绘图代码
+		//abcdef
 	}
 
 }
 
-// DQC's codes end
+// 任意多边形线裁剪算法 结束
 /////////////////////////////////
 
 
@@ -707,26 +754,19 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,CD
 
 
 
-
 //////////////////////////////////
-// XH's codes begin
+// 任意多边形圆裁剪算法 开始
 
-void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& boundary,CDemo_ClipView_VCDlg* dlg)
+void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 {
-	/*CPen penUse;
-	COLORREF clrCircle = RGB(0,0,255);	
-    penUse.CreatePen(PS_SOLID, 1, clrCircle);
-	CClientDC dc(dlg);
-	dc.SelectObject(&penUse);*/
-	//初始化画笔结束
-	
+
 	for(unsigned int i = 0;i<circles.size();i++){  //再次开始遍历每一个圆
-	    vector<r_lineNum> point_Array;   //用于存储每个圆与多边形窗口的交点
-		dlg->getInterpointArray(point_Array,i,circles);  //获得存储交点的容器
-		
+		vector<r_lineNum> point_Array;   //用于存储每个圆与多边形窗口的交点
+		getInterpointArray(point_Array,i,circles);  //获得存储交点的容器
+
 		if(point_Array.size()==0||point_Array.size()==1) //将完全跟多边形不相交以及相切的情况的圆排除，
 		{
-			bool inBoundary = dlg->isPointInBoundary(circles[i].center); //圆心若在多边形内
+			bool inBoundary = isPointInBoundary(circles[i].center); //圆心若在多边形内
 			if (inBoundary==true)
 			{
 				long _x = boundary.vertexs[0].x-circles[i].center.x;
@@ -746,8 +786,8 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 					arc2draw.start_point = start_point;
 					arc2draw.end_point = end_point;
 					EnterCriticalSection(&g_cs);  
-					(*circles_to_draw).push_back(arc2draw);
-					 LeaveCriticalSection(&g_cs); 
+					circles_to_draw.push_back(arc2draw);
+					LeaveCriticalSection(&g_cs); 
 				}
 			}
 		}
@@ -755,7 +795,7 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 		//开始讨论一般的情况
 		else
 		{
-			
+
 			point_Array.push_back(point_Array[0]); //为了便于讨论和计算，在整个交点容器的最后加入第一个交点
 			//当圆刚好过多边形的某一点时，会出现该点被记录两次的情况，故需要进行排除
 			for (int j = 0; j < point_Array.size()-1; j++)
@@ -769,15 +809,15 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 			//开始对交点容器中的每一个交点进行遍历
 			for (unsigned int j = 0; j < point_Array.size()-1; j++)
 			{
-				CPoint mid_point = dlg->getMiddlePoint(point_Array,i,j,circles); //获得两交点的在圆上的中间点
-				bool mid_in_bound = dlg->isPointInBoundary(mid_point);  //判断中间点是否在多边形窗口内
-				if(mid_in_bound == true) //在多边形窗口内，则画整个圆弧
+				CPoint mid_point = getMiddlePoint(point_Array,i,j,circles); //获得两交点的在圆上的中间点
+				bool mid_in_bound = isPointInBoundary(mid_point);  //判断中间点是否在多边形窗口内
+				if(mid_in_bound == true) //在多边形窗口内，则画整个圆弧 
 				{				
 					int start_x = circles[i].center.x-circles[i].radius;
 					int start_y = circles[i].center.y-circles[i].radius;
 					int end_x =  circles[i].center.x+circles[i].radius;
 					int end_y = circles[i].center.y+circles[i].radius;
-					
+
 					CRect rect(start_x,start_y,end_x,end_y);
 					/*dc.Arc(&rect,point_Array[j].point,point_Array[j+1].point);*/
 					struct _arc2draw arc2draw ;
@@ -785,35 +825,20 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 					arc2draw.start_point = point_Array[j].point;
 					arc2draw.end_point = point_Array[j+1].point;
 					EnterCriticalSection(&g_cs);  
-					(*circles_to_draw).push_back(arc2draw);
-					 LeaveCriticalSection(&g_cs); 
+					circles_to_draw.push_back(arc2draw);
+					LeaveCriticalSection(&g_cs); 
 
 				}
-				//else//在多边形窗口外
-				//{
-				//	if(point_Array[j].num_line==point_Array[j+1].num_line)//如果该两交点来自多边形的同一边与圆的交点，则画两点两线
-				//	{
-				//		//该弧在多边形外
-				//		//该弧的两交点在一条多边形的边上
-				//		//画两交点的连线
-
-				//		dc.MoveTo(point_Array[j].point);
-				//		dc.LineTo(point_Array[j+1].point);
-
-				//		
-				//	}	
-				//	//如果该两交点来自多边形的不同边与圆的交点，则应该画多边形的轮廓，但是为了节约时间，就不画了，反正不画轮廓就在那不离不弃....
-				//}
 			}
 		}
 
 	}
 }
 /*
-	函数：给出圆的圆点的坐标和圆上某点的坐标以及半径的长度，通过圆的参数方程，获得该点的角度
-	思路：通过三角函数即可求得。
+*功能：给出圆的圆点的坐标和圆上某点的坐标以及半径的长度，通过圆的参数方程，获得该点的角度
+*思路：通过三角函数即可求得。
 */
-double CDemo_ClipView_VCDlg::getAngle(long x1,long x2,long y1,long y2,double r)
+double getAngle(long x1,long x2,long y1,long y2,double r)
 {
 	double cos = (double)(x1-x2)/(double)r;
 	double sin = (double)(y1-y2)/(double)r;
@@ -829,11 +854,11 @@ double CDemo_ClipView_VCDlg::getAngle(long x1,long x2,long y1,long y2,double r)
 	}
 }
 /*
-	函数：获得多边形窗口与圆的相邻的两个交点在圆上的的中间点。
-	思路：通过圆的参数方程，将两交点的坐标代入方程中，求得两交点各自的角度，（使用getAngle函数）
-	      然后通过三角计算，获得中间点的角度，将此角度代入圆的参数方程，就可以求得中间点的坐标
+*功能：获得多边形窗口与圆的相邻的两个交点在圆上的的中间点。
+*思路：通过圆的参数方程，将两交点的坐标代入方程中，求得两交点各自的角度，（使用getAngle函数）
+*	   然后通过三角计算，获得中间点的角度，将此角度代入圆的参数方程，就可以求得中间点的坐标
 */
-CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i,int j,vector<Circle>& circles2)
+CPoint getMiddlePoint(vector<r_lineNum>& point_Array,int i,int j,vector<Circle>& circles2)
 {
 	double a1 = getAngle(point_Array[j].point.x,circles2[i].center.x,point_Array[j].point.y,circles2[i].center.y,circles2[i].radius);
 	double a2 = getAngle(point_Array[j+1].point.x,circles2[i].center.x,point_Array[j+1].point.y,circles2[i].center.y,circles2[i].radius);
@@ -849,7 +874,7 @@ CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i
 		{
 			mid_a = (a1+a2)/2+PI;
 		}
-		
+
 	}
 	else if (a1<PI&&a2>PI)
 	{
@@ -861,11 +886,11 @@ CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i
 		{
 			mid_a = (a1+a2)/2+PI;
 		}
-				
+
 	}
 	else if (a2<PI&&a1>PI)
 	{
-		
+
 		mid_a = (a1+a2)/2;
 	}
 	else if (a2>PI&&a1>PI)
@@ -878,7 +903,7 @@ CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i
 		{
 			mid_a = (a1+a2)/2-PI;
 		}
-		
+
 	}
 	double x = circles2[i].center.x+circles2[i].radius*cos(mid_a);
 	double y = circles2[i].center.y+circles2[i].radius*sin(mid_a);
@@ -888,14 +913,14 @@ CPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<r_lineNum>& point_Array,int i
 	return point;
 }
 /*
-	函数：判断点是否在多边形窗口内
-	思路：根据交点法求得某点是否在多边形的窗口内部。通过该点取平行于y轴的直线l，
-	      先判断直线是否穿过多边形窗口的点。若穿过，判断与该点相邻的两边是否在l的两边，
-		  若在，则交点数加一，若在同一边，则交点数加二。
-		  然后判断多边形窗口的每一条边是否与直线l有交点，
-		  若有，则交点数加一。最后若交点数为偶数，则该点在多边形窗口外部，若为奇数，则该点在多边形窗口内部。
+*功能：判断点是否在多边形窗口内
+*思路：根据交点法求得某点是否在多边形的窗口内部。通过该点取平行于y轴的直线l，
+*	   先判断直线是否穿过多边形窗口的点。若穿过，判断与该点相邻的两边是否在l的两边，
+*	   若在，则交点数加一，若在同一边，则交点数加二。
+*	   然后判断多边形窗口的每一条边是否与直线l有交点，
+*	   若有，则交点数加一。最后若交点数为偶数，则该点在多边形窗口外部，若为奇数，则该点在多边形窗口内部。
 */
-bool CDemo_ClipView_VCDlg::isPointInBoundary(CPoint& point)
+bool isPointInBoundary(CPoint& point)
 {
 	int interNum = 0;
 	long x1 = point.x;
@@ -934,7 +959,7 @@ bool CDemo_ClipView_VCDlg::isPointInBoundary(CPoint& point)
 		if((between1>0&&between2<0)||(between1<0&&between2>0))
 		{
 			long x3 = boundary.vertexs[i].x;
-		    long x4 = boundary.vertexs[i-1].x;
+			long x4 = boundary.vertexs[i-1].x;
 			long y3 = boundary.vertexs[i].y;
 			long y4 = boundary.vertexs[i-1].y;
 			long a = y4-y3;
@@ -959,30 +984,32 @@ bool CDemo_ClipView_VCDlg::isPointInBoundary(CPoint& point)
 	}
 
 }
+
 /*
-	函数：通过直线参数方程的参数，直线的两交点的坐标，获得该直线上的一个点。
-	思路：通过直线的参数方程可以求得。
+*功能：通过直线参数方程的参数，直线的两交点的坐标，获得该直线上的一个点。
+*思路：通过直线的参数方程可以求得。
 */
-struct r_lineNum CDemo_ClipView_VCDlg::getInterpoint(double t,int x1,int x2,int y1,int y2,int i)
+struct r_lineNum getInterpoint(double t,int x1,int x2,int y1,int y2,int i)
 {
 	long x = x1+(x2-x1)*t;
 	long y = y1+(y2-y1)*t;
-    struct r_lineNum pit;
+	struct r_lineNum pit;
 	pit.point.x = x;
 	pit.point.y = y;
 	pit.num_line = i;
 	return pit;
 }
+
 /*
-	函数：获得圆与多边形的交点的集合，且交点顺序按照逆时针的方向存入point_Array的容器中
-	思路：逆时针遍历多边形的每一条边，根据直线到圆心的距离判断是否有交点，若有交点，将直线
-	      上的点的参数方程的形式代入圆的表达式，化简得到A*t^2+B*t+C=0的形式（t是直线参数方程中的参数，介于0-1）
-		  求出A,B,C的值，若 B^2-4*A*C=0,则只有一个解，且解为(-B)/(2*A)，
-		  若B^2-4*A*C>0有两个解,一个解为((-B)+sqrt(B^2-4*A*C))/(2*A),另一个解为((-B)-sqrt(B^2-4*A*C))/(2*A)
-		  然后，对解的值进行判断，若解大于等于0，解小于等于1，则是交点，否则舍去。将解值代入参数方程即可求得交点。
-		  最后，对交点的顺序进行判断，解值小的值先存入point_Array容器。
+*功能：获得圆与多边形的交点的集合，且交点顺序按照逆时针的方向存入point_Array的容器中
+*思路：逆时针遍历多边形的每一条边，根据直线到圆心的距离判断是否有交点，若有交点，将直线
+*	   上的点的参数方程的形式代入圆的表达式，化简得到A*t^2+B*t+C=0的形式（t是直线参数方程中的参数，介于0-1）
+*	   求出A,B,C的值，若 B^2-4*A*C=0,则只有一个解，且解为(-B)/(2*A)，
+*	   若B^2-4*A*C>0有两个解,一个解为((-B)+sqrt(B^2-4*A*C))/(2*A),另一个解为((-B)-sqrt(B^2-4*A*C))/(2*A)
+*	   然后，对解的值进行判断，若解大于等于0，解小于等于1，则是交点，否则舍去。将解值代入参数方程即可求得交点。
+*	   最后，对交点的顺序进行判断，解值小的值先存入point_Array容器。
 */
-void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Circle>& circle2)
+void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Circle>& circle2)
 {
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
@@ -1032,11 +1059,11 @@ void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int
 			if (t1>=0&&t1<=1)
 			{				
 				struct r_lineNum pit = getInterpoint(t1,x1,x2,y1,y2,i);
- 				point_Array.push_back(pit);
+				point_Array.push_back(pit);
 				if (t2>=0&&t2<=1)
 				{
 					struct r_lineNum pit = getInterpoint(t2,x1,x2,y1,y2,i);
-				    point_Array.push_back(pit);
+					point_Array.push_back(pit);
 				}
 
 			}
@@ -1045,7 +1072,7 @@ void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int
 				if (t2>=0&&t2<=1)
 				{
 					struct r_lineNum pit = getInterpoint(t2,x1,x2,y1,y2,i);
-				    point_Array.push_back(pit);
+					point_Array.push_back(pit);
 				}
 				else
 				{
@@ -1057,7 +1084,7 @@ void CDemo_ClipView_VCDlg::getInterpointArray(vector<r_lineNum>& point_Array,int
 }
 
 
-// XH's codes end
+// 任意多边形圆裁剪算法 结束
 /////////////////////////////////
 
 
@@ -1404,8 +1431,8 @@ void CDemo_ClipView_VCDlg::BeginTimeAndMemoryMonitor()
 	PROCESS_MEMORY_COUNTERS pmc;    
 	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
 	startMemory = pmc.PagefileUsage;
-	//startTime = clock();
-	precise_start();
+	startTime = clock();
+	//precise_start();
 }
 void CDemo_ClipView_VCDlg::EndTimeAndMemoryMonitor()
 {
@@ -1414,8 +1441,8 @@ void CDemo_ClipView_VCDlg::EndTimeAndMemoryMonitor()
 	PROCESS_MEMORY_COUNTERS pmc;    
 	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
 	endMemory = pmc.PagefileUsage;
-	//double useTimeS = (endTime - startTime)/1000;
-	double useTimeS=precise_stop();
+	double useTimeS = (endTime - startTime)/1000;
+	//double useTimeS=precise_stop();
 	double useMemoryM = (endMemory - startMemory)/1024/1024;
 	m_stc_drawing.SetWindowText("裁剪完毕！");
 	m_stc_info1.ShowWindow(SW_SHOW);

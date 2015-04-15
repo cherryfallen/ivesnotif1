@@ -27,7 +27,7 @@ struct IntersectPoint
 {
 public:
 	bool isIntoPoly;
-	int convexPointNum;
+	int contexPoint;
 	double t;
 	CPoint point;
 };
