@@ -79,26 +79,17 @@ CRITICAL_SECTION g_cs;  //声明保护临界区
 
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
+	//先保留足够的空间，以免之后空间不够时发生内存拷贝
 	lines_to_draw.reserve(2*lines.size());
 	circles_to_draw.reserve(2*circles.size());
 
-	//Line l;
-	//CPoint s,e;
-	//lines.clear();
-	//s.x=180;
-	//s.y=320;
-	//e.x=450;
-	//e.y=188;
-	//l.startpoint=s;
-	//l.endpoint=e;
-	//lines.push_back(l);
-
-	/*SYSTEM_INFO info;
+	//根据CPU数量确定线程数
+	SYSTEM_INFO info;
 	GetSystemInfo(&info);
 	int THREAD_NUMBER=info.dwNumberOfProcessors;
 	if (THREAD_NUMBER>MAX_THREAD_NUMBER)
-		THREAD_NUMBER=MAX_THREAD_NUMBER;*/
-	int THREAD_NUMBER=1;
+		THREAD_NUMBER=MAX_THREAD_NUMBER;
+	//int THREAD_NUMBER=1;
 
 	CClientDC dc(this);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
