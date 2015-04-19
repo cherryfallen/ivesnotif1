@@ -23,13 +23,20 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
+<<<<<<< Updated upstream
 #define TEST_CIRCLES 0
+=======
+#define TEST_CIRCLES 1
+>>>>>>> Stashed changes
 
 //是否绘出初始数据和裁剪结果，使用0来方便测试
 #define TEST_DRAW_INITIAL 1
 #define TEST_DRAW_ANSWER 1
+<<<<<<< Updated upstream
 
 #define MAX_THREAD_NUMBER 16
+=======
+>>>>>>> Stashed changes
 
 //裁剪算法相关定义
 const int INTIALIZE=0;
@@ -138,8 +145,15 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	for (int i = 0;i<THREAD_NUMBER;i++)
 	{
-		hThead[i] = CreateThread(NULL,0,ThreadProc,&Info[i],0,&(dwThreadID[i]));
+<<<<<<< Updated upstream
+		hThead[i] = CreateThread(NULL,0,ThreadProc2,&Info[i],0,&(dwThreadID[i]));
 		SetThreadAffinityMask(hThead[i],i+1);
+=======
+
+		hThead[i] = CreateThread(NULL,0,ThreadProc2,&Info[i],0,&(dwThreadID[i]));
+		
+
+>>>>>>> Stashed changes
 	}
 
 	//for (int i = 0; i < THREAD_NUMBER; i++)
@@ -175,7 +189,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 }
 
 
-DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc(LPVOID lpParam)  
+DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc2(LPVOID lpParam)  
 {  
 
 	_param  * Info = ( _param *)lpParam; 
@@ -214,14 +228,21 @@ DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc(LPVOID lpParam)
 //////////////////////////////////
 // 凸多边形线裁剪算法 开始
 
+<<<<<<< Updated upstream
 /*
 *功能：判断线段是否在包围盒里，若在包围盒里则返回true，否则返回false
 *参数：boundary为裁剪边界  line为所判断的线段
 *思路：遍历多边形的顶点，以最小的x,y和最大的x,y值分别为包围盒的对角线端点
 */
 bool InBox(Line& line){
+=======
+//功能：判断线段是否在包围盒里，若在包围盒里则返回true，否则返回false
+//形参：boundary为裁剪边界  line为所判断的线段
+//思路：遍历多边形的顶点，以最小的x,y和最大的x,y值分别为包围盒的对角线端点
+bool CDemo_ClipView_VCDlg::InBox(Line& line){
+>>>>>>> Stashed changes
 	bool isVisible=true;
-	int xl=INTIALIZE,xr=-INTIALIZE,yt=-INTIALIZE,yb=INTIALIZE; //对包围盒的边界值进行初始化
+	int xl=INTIALIZE,xr=INTIALIZE,yt=-INTIALIZE,yb=INTIALIZE; //对包围盒的边界值进行初始化
 	int n=boundary.vertexs.size();
 	for(int i=0;i<n-1;i++){
 		if(boundary.vertexs[i].x<=xl) xl=boundary.vertexs[i].x;
@@ -313,8 +334,8 @@ Line result(Line& line){
 	line_result.endpoint.x=line_result.endpoint.y=INTIALIZE;
 
 	bool bspt=isPointInBoundary(line.startpoint);//startpoint是否在多边形内，若是返回值为true
-
 	bool bept=isPointInBoundary(line.endpoint);  //endpoint是否在多边形内，若是返回值为true
+
 	//若两点都在多边形内则绘制该直线
 	if(bspt&&bept)
 		return line; 
@@ -346,6 +367,10 @@ Line result(Line& line){
 		}
 		return line_result;
 	}
+<<<<<<< Updated upstream
+=======
+	//若startpoint在多边形外，但endpoint在多边形内
+>>>>>>> Stashed changes
 	//startpoint和endpoint均在多边形外
 	else if((!bspt)&&(!bept)){
 		int n=boundary.vertexs.size();
@@ -387,11 +412,21 @@ void dealConvex(vector<Line>& lines,Boundary& boundary)
 	//此处处理的是凸多边形窗口
 	for(int i=0;i<lines.size();i++){
 		//先判断线段是否在包围盒内，若明显不在则不显示该线段，否则继续以下步骤
+<<<<<<< Updated upstream
 		if(InBox(lines[i])){
 			Line line=result(lines[i]);
 			lines_to_draw.push_back(line);
 			/*if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
 			dlg->DrawLine(line,clrLine);*/
+=======
+		if(dlg->InBox(lines[i])){
+			Line line=dlg->result(lines[i]);
+			//(*lines_to_draw).push_back(line);
+			//if判断 不要注释掉~哼唧 (￢︿̫̿￢☆)
+			if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
+				(*lines_to_draw).push_back(line);
+				//dlg->DrawLine(line,clrLine);
+>>>>>>> Stashed changes
 		}
 	}
 	//ClearTestLines();
@@ -1412,6 +1447,43 @@ void CDemo_ClipView_VCDlg::ClearTestCaseData()
 	CClientDC dc(this);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 }
+double CDemo_ClipView_VCDlg::maxMemory = 0;
+bool CDemo_ClipView_VCDlg::m_bStopTimer = false;
+int CDemo_ClipView_VCDlg::timerId = 0;
+void CALLBACK TimerProc(HWND hWnd, UINT nMsg, UINT nTimerid, DWORD dwTime);
+void CALLBACK TimerProc(HWND hWnd, UINT nMsg, UINT nTimerid, DWORD dwTime)
+{
+	HANDLE handle=GetCurrentProcess();
+	PROCESS_MEMORY_COUNTERS pmc;    
+	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
+	double curMemory = pmc.PeakPagefileUsage;
+	if (curMemory > CDemo_ClipView_VCDlg::maxMemory)
+	{
+		CDemo_ClipView_VCDlg::maxMemory = curMemory;
+	}
+}
+UINT ThreadProc(LPVOID lParam);
+UINT ThreadProc(LPVOID lParam)
+{
+	SetTimer(NULL, ++CDemo_ClipView_VCDlg::timerId, /*频率*/10/*毫秒*/, TimerProc);
+	int itemp;
+	MSG msg;
+	while((itemp=GetMessage(&msg, NULL, NULL, NULL)) && (-1 != itemp))
+	{
+		if (CDemo_ClipView_VCDlg::m_bStopTimer)
+		{
+			KillTimer(NULL, CDemo_ClipView_VCDlg::timerId);
+			return 0;
+		}
+		if (msg.message == WM_TIMER)
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+	return 0;
+}
+
 void CDemo_ClipView_VCDlg::BeginTimeAndMemoryMonitor()
 {
 	m_btn_clip.EnableWindow(FALSE);
@@ -1422,19 +1494,26 @@ void CDemo_ClipView_VCDlg::BeginTimeAndMemoryMonitor()
 	PROCESS_MEMORY_COUNTERS pmc;    
 	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
 	startMemory = pmc.PagefileUsage;
+<<<<<<< Updated upstream
 	startTime = clock();
 	//precise_start();
+=======
+	maxMemory = 0;
+	AfxBeginThread(ThreadProc, NULL);
+	startTime = clock();
+>>>>>>> Stashed changes
 }
 void CDemo_ClipView_VCDlg::EndTimeAndMemoryMonitor()
 {
 	endTime = clock();
-	HANDLE handle=GetCurrentProcess();
-	PROCESS_MEMORY_COUNTERS pmc;    
-	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
-	endMemory = pmc.PagefileUsage;
+	m_bStopTimer = true;
 	double useTimeS = (endTime - startTime)/1000;
-	//double useTimeS=precise_stop();
-	double useMemoryM = (endMemory - startMemory)/1024/1024;
+	double useMemoryM = (maxMemory - startMemory)/1024/1024;
+	if (useMemoryM < 0)
+	{
+		useMemoryM = 0.0;
+	}
+>>>>>>> Stashed changes
 	m_stc_drawing.SetWindowText("裁剪完毕！");
 	m_stc_info1.ShowWindow(SW_SHOW);
 	CString strTime;
