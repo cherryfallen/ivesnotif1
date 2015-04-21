@@ -15,8 +15,8 @@ using namespace std;
 
 // CDemo_ClipView_VCDlg 对话框
 
-#define CANVAS_WIDTH	1440
-#define CANVAS_HEIGHT	900
+#define CANVAS_WIDTH	800	
+#define CANVAS_HEIGHT	600
 #define INFO_HEIGHT		50
 #define TESTDATA_XML1  "TestData1.xml"
 #define TESTDATA_XML2  "TestData2.xml"
