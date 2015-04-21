@@ -23,7 +23,7 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
-#define TEST_CIRCLES 0
+#define TEST_CIRCLES 1
 
 //是否绘出初始数据和裁剪结果，使用0来方便测试
 #define TEST_DRAW_INITIAL 1
@@ -138,7 +138,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	for (int i = 0;i<THREAD_NUMBER;i++)
 	{
-		hThead[i] = CreateThread(NULL,0,ThreadProc,&Info[i],0,&(dwThreadID[i]));
+		hThead[i] = CreateThread(NULL,0,ThreadProc2,&Info[i],0,&(dwThreadID[i]));
 		SetThreadAffinityMask(hThead[i],i+1);
 	}
 
@@ -175,9 +175,8 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 }
 
 
-DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc(LPVOID lpParam)  
+DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc2(LPVOID lpParam)  
 {  
-
 	_param  * Info = ( _param *)lpParam; 
 
 	double starttime=clock();
@@ -389,9 +388,9 @@ void dealConvex(vector<Line>& lines,Boundary& boundary)
 		//先判断线段是否在包围盒内，若明显不在则不显示该线段，否则继续以下步骤
 		if(InBox(lines[i])){
 			Line line=result(lines[i]);
-			lines_to_draw.push_back(line);
-			/*if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
-			dlg->DrawLine(line,clrLine);*/
+			//lines_to_draw.push_back(line);
+			if(line.startpoint.x!=INTIALIZE &&line.startpoint.y!=INTIALIZE && line.endpoint.x!=INTIALIZE && line.endpoint.y!=INTIALIZE)
+				lines_to_draw.push_back(line);
 		}
 	}
 	//ClearTestLines();
@@ -1412,6 +1411,43 @@ void CDemo_ClipView_VCDlg::ClearTestCaseData()
 	CClientDC dc(this);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 }
+double CDemo_ClipView_VCDlg::maxMemory = 0;
+bool CDemo_ClipView_VCDlg::m_bStopTimer = false;
+int CDemo_ClipView_VCDlg::timerId = 0;
+void CALLBACK TimerProc(HWND hWnd, UINT nMsg, UINT nTimerid, DWORD dwTime);
+void CALLBACK TimerProc(HWND hWnd, UINT nMsg, UINT nTimerid, DWORD dwTime)
+{
+	HANDLE handle=GetCurrentProcess();
+	PROCESS_MEMORY_COUNTERS pmc;    
+	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
+	double curMemory = pmc.PeakPagefileUsage;
+	if (curMemory > CDemo_ClipView_VCDlg::maxMemory)
+	{
+		CDemo_ClipView_VCDlg::maxMemory = curMemory;
+	}
+}
+UINT ThreadProc(LPVOID lParam);
+UINT ThreadProc(LPVOID lParam)
+{
+	SetTimer(NULL, ++CDemo_ClipView_VCDlg::timerId, /*频率*/10/*毫秒*/, TimerProc);
+	int itemp;
+	MSG msg;
+	while((itemp=GetMessage(&msg, NULL, NULL, NULL)) && (-1 != itemp))
+	{
+		if (CDemo_ClipView_VCDlg::m_bStopTimer)
+		{
+			KillTimer(NULL, CDemo_ClipView_VCDlg::timerId);
+			return 0;
+		}
+		if (msg.message == WM_TIMER)
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+	return 0;
+}
+
 void CDemo_ClipView_VCDlg::BeginTimeAndMemoryMonitor()
 {
 	m_btn_clip.EnableWindow(FALSE);
@@ -1422,19 +1458,20 @@ void CDemo_ClipView_VCDlg::BeginTimeAndMemoryMonitor()
 	PROCESS_MEMORY_COUNTERS pmc;    
 	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
 	startMemory = pmc.PagefileUsage;
+	maxMemory = 0;
+	AfxBeginThread(ThreadProc, NULL);
 	startTime = clock();
-	//precise_start();
 }
 void CDemo_ClipView_VCDlg::EndTimeAndMemoryMonitor()
 {
 	endTime = clock();
-	HANDLE handle=GetCurrentProcess();
-	PROCESS_MEMORY_COUNTERS pmc;    
-	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
-	endMemory = pmc.PagefileUsage;
+	m_bStopTimer = true;
 	double useTimeS = (endTime - startTime)/1000;
-	//double useTimeS=precise_stop();
-	double useMemoryM = (endMemory - startMemory)/1024/1024;
+	double useMemoryM = (maxMemory - startMemory)/1024/1024;
+	if (useMemoryM < 0)
+	{
+		useMemoryM = 0.0;
+	}
 	m_stc_drawing.SetWindowText("裁剪完毕！");
 	m_stc_info1.ShowWindow(SW_SHOW);
 	CString strTime;

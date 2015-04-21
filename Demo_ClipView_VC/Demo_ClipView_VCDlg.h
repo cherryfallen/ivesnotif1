@@ -50,6 +50,7 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 public:
+
 	CButton m_btn_clip;
 	CStatic m_stc_drawing;
 	CStatic m_stc_info1;
@@ -80,10 +81,13 @@ private:
 	BOOL IsBoundaryOutCanvas(Boundary boundary);
 
 public:
+	static double maxMemory;
+	static bool m_bStopTimer;
+	static int timerId;
 	void DrawLine(Line line, COLORREF clr);
 	void DrawCircle(Circle circle, COLORREF clr);
 	void DrawBoundary(Boundary boundary, COLORREF clr);
-	static DWORD WINAPI ThreadProc(LPVOID lpParam);
+	static DWORD WINAPI ThreadProc2(LPVOID lpParam);
 
 };
 
