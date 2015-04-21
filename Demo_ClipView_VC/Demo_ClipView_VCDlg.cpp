@@ -79,6 +79,17 @@ CRITICAL_SECTION g_cs;  //声明保护临界区
 
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
+	//boundary里面可能会有连续两点相同的异常情况，先进行处理清除此异常情况
+	vector<CPoint>::iterator pos;
+	for (pos = boundary.vertexs.begin()+1; pos != boundary.vertexs.end(); pos++)
+	{
+		if ((*pos).x ==(*(pos-1)).x&&(*pos).y ==(*(pos-1)).y)
+		{
+			pos = boundary.vertexs.erase(pos);
+			pos--;
+		}
+	}
+
 	//先保留足够的空间，以免之后空间不够时发生内存拷贝
 	lines_to_draw.reserve(2*lines.size());
 	circles_to_draw.reserve(2*circles.size());
@@ -809,7 +820,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 					int end_y = circles[i].center.y+circles[i].radius;
 
 					CRect rect(start_x,start_y,end_x,end_y);
-					/*dc.Arc(&rect,point_Array[j].point,point_Array[j+1].point);*/
+					//dc.Arc(&rect,point_Array[j].point,point_Array[j+1].point);
 					struct _arc2draw arc2draw ;
 					arc2draw.rect = rect;
 					arc2draw.start_point = point_Array[j].point;
@@ -919,7 +930,8 @@ bool isPointInBoundary(CPoint& point)
 	long y2 = 0;
 	for (unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
-		if (boundary.vertexs[i].x==x1&&boundary.vertexs[i].y<=y1)
+		bool tmp = (boundary.vertexs[i].x==x1)&&(boundary.vertexs[i].y<y1);
+		if ((boundary.vertexs[i].x==x1)&&(boundary.vertexs[i].y<y1)) //对边界点在线上和连续两边界点在线上的情况进行讨论
 		{
 			if (i==(boundary.vertexs.size()-1))
 			{
@@ -928,6 +940,74 @@ bool isPointInBoundary(CPoint& point)
 				if ((between1>0&&between2<0)||(between1<0&&between2>0))
 				{
 					interNum++;
+				}
+				else if(between1==0)
+				{
+					long between3 =boundary.vertexs[i-2].x-x1;
+					if ((between3>0&&between2<0)||(between3<0&&between2>0))
+					{
+						interNum++;
+					}
+				}
+				/*else if(between2==0)
+				{
+					long between3 =boundary.vertexs[2].x-x1;
+					if ((between3>0&&between1<0)||(between3<0&&between1>0))
+					{
+						interNum++;
+					}
+				}*/
+
+			}
+			else if (i==(boundary.vertexs.size()-2))
+			{
+				long between1 =boundary.vertexs[i-1].x-x1;
+				long between2 =boundary.vertexs[i+1].x-x1;
+				if ((between1>0&&between2<0)||(between1<0&&between2>0))
+				{
+					interNum++;
+				}
+				else if(between1==0)
+				{
+					long between3 =boundary.vertexs[i-2].x-x1;
+					if ((between3>0&&between2<0)||(between3<0&&between2>0))
+					{
+						interNum++;
+					}
+				}
+				/*else if(between2==0)
+				{
+					long between3 =boundary.vertexs[1].x-x1;
+					if ((between3>0&&between1<0)||(between3<0&&between1>0))
+					{
+						interNum++;
+					}
+				}*/
+
+			}
+			else if (i==1)
+			{
+				long between1 =boundary.vertexs[2].x-x1;
+				long between2 =boundary.vertexs[0].x-x1;
+				if ((between1>0&&between2<0)||(between1<0&&between2>0))
+				{
+					interNum++;
+				}
+				/*else if(between1==0)
+				{
+					long between3 =boundary.vertexs[3].x-x1;
+					if ((between3>0&&between2<0)||(between3<0&&between2>0))
+					{
+						interNum++;
+					}
+				}*/
+				else if(between2==0)
+				{
+					long between3 =boundary.vertexs[boundary.vertexs.size()-2].x-x1;
+					if ((between3>0&&between1<0)||(between3<0&&between1>0))
+					{
+						interNum++;
+					}
 				}
 
 			}
@@ -939,9 +1019,26 @@ bool isPointInBoundary(CPoint& point)
 				{
 					interNum++;
 				}
+				else if(between1==0)
+				{
+					long between3 =boundary.vertexs[i-2].x-x1;
+					if ((between3>0&&between2<0)||(between3<0&&between2>0))
+					{
+						interNum++;
+					}
+				}
+				/*else if(between2==0)
+				{
+					long between3 =boundary.vertexs[i+2].x-x1;
+					if ((between3>0&&between1<0)||(between3<0&&between1>0))
+					{
+						interNum++;
+					}
+				}*/
 			}
 		}
 	}
+
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
 		long between1 =boundary.vertexs[i].x-x1;
@@ -949,7 +1046,7 @@ bool isPointInBoundary(CPoint& point)
 		if((between1>0&&between2<0)||(between1<0&&between2>0))
 		{
 			long x3 = boundary.vertexs[i].x;
-			long x4 = boundary.vertexs[i-1].x;
+		    long x4 = boundary.vertexs[i-1].x;
 			long y3 = boundary.vertexs[i].y;
 			long y4 = boundary.vertexs[i-1].y;
 			long a = y4-y3;
@@ -1070,6 +1167,109 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 				}
 			}
 		}
+	}
+	if (point_Array.size()>2)
+	{
+		
+		//以下代码用于将所有的交点按照顺时针排序
+		vector<CPoint> y_up_0;
+		vector<CPoint> y_down_0;
+		for (int i = 0; i < point_Array.size(); i++)
+		{
+			if (point_Array[i].point.y <= circle2[circle_num].center.y)
+			{
+				y_down_0.push_back(point_Array[i].point);
+			}
+			else
+			{
+				y_up_0.push_back(point_Array[i].point);
+			}
+		}
+		if (y_down_0.size()>1)
+		{
+			for (int i = 0; i < y_down_0.size()-1; i++)
+			{
+				for (int j = 0; j < y_down_0.size()-1-i; j++)
+				{
+					if (y_down_0[j].x < y_down_0[j+1].x)
+					{
+						CPoint tmp;
+						tmp.x = y_down_0[j].x;
+						tmp.y = y_down_0[j].y;
+						y_down_0[j] = y_down_0[j+1];
+						y_down_0[j+1] = tmp;
+					}
+					else if(y_down_0[j].x == y_down_0[j+1].x) //这个可能是由于计算精度损失导致同x不同y的情况
+					{
+						if (y_down_0[j].x < circle2[circle_num].center.x)
+						{
+							if (y_down_0[j].y > y_down_0[j+1].y)
+							{
+								CPoint tmp;
+								tmp.x = y_down_0[j].x;
+								tmp.y = y_down_0[j].y;
+								y_down_0[j] = y_down_0[j+1];
+								y_down_0[j+1] = tmp;
+							}
+						}
+						else
+						{
+							if (y_down_0[j].y < y_down_0[j+1].y)
+							{
+								CPoint tmp;
+								tmp.x = y_down_0[j].x;
+								tmp.y = y_down_0[j].y;
+								y_down_0[j] = y_down_0[j+1];
+								y_down_0[j+1] = tmp;
+							}
+
+						}
+					}
+				}
+			}
+		}
+		if (y_up_0.size()>1)
+		{
+			for (int i = 0; i < y_up_0.size()-1; i++)
+			{
+				for (int j = 0; j < y_up_0.size()-1-i; j++)
+				{
+					if (y_up_0[j].x > y_up_0[j+1].x)
+					{
+						CPoint tmp;
+						tmp.x = y_up_0[j].x;
+						tmp.y = y_up_0[j].y;
+						y_up_0[j] = y_up_0[j+1];
+						y_up_0[j+1] = tmp;
+					}
+				}
+			}
+		}
+		if (y_down_0.size()>0)
+		{
+			for (int i = 0; i < y_down_0.size(); i++)
+			{
+				struct r_lineNum tmp;
+				tmp.point = y_down_0[i];
+				tmp.num_line = 0;
+				point_Array[i] = tmp;
+			}
+		}
+		if (y_up_0.size()>0)
+		{
+			for (int i = 0; i < y_up_0.size(); i++)
+			{
+				struct r_lineNum tmp;
+				tmp.point = y_up_0[i];
+				tmp.num_line = 0;
+				point_Array[y_down_0.size()+i] = tmp;
+			}
+		}
+		
+
+	
+	//以上代码用于将所有的交点按照顺时针排序
+
 	}
 }
 
