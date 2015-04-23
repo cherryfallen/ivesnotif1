@@ -23,7 +23,7 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
-#define TEST_CIRCLES 1
+#define TEST_CIRCLES 0
 
 //是否绘出初始数据和裁剪结果，使用0来方便测试
 #define TEST_DRAW_INITIAL 1
@@ -91,8 +91,8 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	}
 
 	//先保留足够的空间，以免之后空间不够时发生内存拷贝
-	lines_to_draw.reserve(2*lines.size());
-	circles_to_draw.reserve(2*circles.size());
+	lines_to_draw.reserve(lines.size()*2);
+	circles_to_draw.reserve(circles.size()*22);
 
 	//根据CPU数量确定线程数
 	SYSTEM_INFO info;
@@ -179,8 +179,13 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	DeleteCriticalSection(&g_cs); //程序完了  释放临界区变量
 
-	lines_to_draw.clear();
-	circles_to_draw.clear();
+	//lines_to_draw.clear();
+	vector<Line>().swap(lines_to_draw);
+	//circles_to_draw.clear();
+	vector<_arc2draw>().swap(circles_to_draw);
+	vector<Line>().swap(lines);
+	vector<Circle>().swap(circles);
+	vector<ThreadTime>().swap(thread_use_time);
 	penLine.DeleteObject();
 	penCircle.DeleteObject();
 }
@@ -587,7 +592,7 @@ void dealConcave(vector<Line>& lines,Boundary& boundary)
 
 	int linenum=lines.size();
 	RECT r;
-	for (int i=0;i<linenum;i++)//枚举每条线段
+	for (int i =0;i<linenum;i++)//枚举每条线段
 	{
 		r.bottom=min(lines[i].startpoint.y,lines[i].endpoint.y);
 		r.top=max(lines[i].startpoint.y,lines[i].endpoint.y);
