@@ -856,13 +856,17 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 					else
 						tmp2.y = tmp_xy;
 					//dc.Arc(&rect,point_Array[j].point,point_Array[j+1].point);
-					struct _arc2draw arc2draw ;
-					arc2draw.rect = rect;
-					arc2draw.start_point = tmp;
-					arc2draw.end_point = tmp2;
-					EnterCriticalSection(&g_cs);  
-					circles_to_draw.push_back(arc2draw);
-					LeaveCriticalSection(&g_cs); 
+					if (!(tmp.x==tmp2.x&&tmp.y==tmp2.y))
+					{
+						struct _arc2draw arc2draw ;
+						arc2draw.rect = rect;
+						arc2draw.start_point = tmp;
+						arc2draw.end_point = tmp2;
+						EnterCriticalSection(&g_cs);  
+						circles_to_draw.push_back(arc2draw);
+						LeaveCriticalSection(&g_cs); 
+					}
+					
 
 				}
 			}
