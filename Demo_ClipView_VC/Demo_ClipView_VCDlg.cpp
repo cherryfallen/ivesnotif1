@@ -23,7 +23,7 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
-#define TEST_CIRCLES 0
+#define TEST_CIRCLES 1
 
 //是否绘出初始数据和裁剪结果，使用0来方便测试
 #define TEST_DRAW_INITIAL 1
@@ -957,6 +957,81 @@ XPoint getMiddlePoint(vector<XPoint>& point_Array,int i,int j,vector<Circle>& ci
 	point.y = y;
 	return point;
 }
+
+/*
+*函数重载
+*功能：判断点是否在多边形窗口内
+*思路：根据交点法求得某点是否在多边形的窗口内部。通过该点取平行于y轴的直线l，
+*	   先判断直线是否穿过多边形窗口的点。若穿过，判断与该点相邻的两边是否在l的两边，
+*	   若在，则交点数加一，若在同一边，则交点数加二。
+*	   然后判断多边形窗口的每一条边是否与直线l有交点，
+*	   若有，则交点数加一。最后若交点数为偶数，则该点在多边形窗口外部，若为奇数，则该点在多边形窗口内部。
+*/
+bool isPointInBoundary(CPoint& point)
+{
+	int interNum = 0;
+	long x1 = point.x;
+	long y1 = point.y;
+	long x2 = x1;
+	long y2 = 0;
+	for (unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
+	{
+		if (boundary.vertexs[i].x==x1&&boundary.vertexs[i].y<=y1)
+		{
+			if (i==(boundary.vertexs.size()-1))
+			{
+				long between1 =boundary.vertexs[i-1].x-x1;
+				long between2 =boundary.vertexs[1].x-x1;
+				if ((between1>0&&between2<0)||(between1<0&&between2>0))
+				{
+					interNum++;
+				}
+
+			}
+			else
+			{
+				long between1 =boundary.vertexs[i-1].x-x1;
+				long between2 =boundary.vertexs[i+1].x-x1;
+				if ((between1>0&&between2<0)||(between1<0&&between2>0))
+				{
+					interNum++;
+				}
+			}
+		}
+	}
+	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
+	{
+		long between1 =boundary.vertexs[i].x-x1;
+		long between2 =boundary.vertexs[i-1].x-x1;
+		if((between1>0&&between2<0)||(between1<0&&between2>0))
+		{
+			long x3 = boundary.vertexs[i].x;
+			long x4 = boundary.vertexs[i-1].x;
+			long y3 = boundary.vertexs[i].y;
+			long y4 = boundary.vertexs[i-1].y;
+			long a = y4-y3;
+			long b = x3-x4;
+			long c = x4*y3-x3*y4;
+			long long isInter1 = (long long)(a*x1+b*y1+c);
+			long long isInter2 = (long long)(a*x2+b*y2+c);
+			if((isInter1<=0&&isInter2>=0)||(isInter1>=0&&isInter2<=0))
+			{
+				interNum++;
+			}
+
+		}
+	}
+	if(interNum%2!=0)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+
+}
+
 /*
 *功能：判断点是否在多边形窗口内
 *思路：根据交点法求得某点是否在多边形的窗口内部。通过该点取平行于y轴的直线l，

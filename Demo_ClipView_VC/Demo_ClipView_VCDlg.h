@@ -114,6 +114,7 @@ Line result(Line&);
 void getInterpointArray(vector<XPoint>&,int,vector<Circle>&);
 struct XPoint getInterpoint(double,int,int,int,int);
 bool isPointInBoundary(XPoint&);
+bool isPointInBoundary(CPoint&);
 XPoint getMiddlePoint(vector<XPoint>&,int,int,vector<Circle>&);
 double getAngle(double,double,double,double,double);
 static void forCircleRun(vector<Circle>&,Boundary&);
