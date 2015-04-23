@@ -15,16 +15,14 @@ using std::vector;
 #pragma comment(lib,"psapi.lib")
 #include "precise.h"
 
-struct r_lineNum
-{
-	CPoint point;
-	int num_line;
-};
 struct Vector
 {
 	double x,y;
 };
-
+struct XPoint{
+	double x;
+	double y;
+};
 
 // CDemo_ClipView_VCDlg ¶Ô»°¿ò
 class CDemo_ClipView_VCDlg : public CDialogEx
@@ -113,10 +111,10 @@ Line result(Line&);
 //gs methods ends
 
 //xh methods begins
-void getInterpointArray(vector<r_lineNum>&,int,vector<Circle>&);
-struct r_lineNum getInterpoint(double,int,int,int,int,int);
-bool isPointInBoundary(CPoint&);
-CPoint getMiddlePoint(vector<r_lineNum>&,int,int,vector<Circle>&);
-double getAngle(long,long,long,long,double);
-void forCircleRun(vector<Circle>&,Boundary&);
+void getInterpointArray(vector<XPoint>&,int,vector<Circle>&);
+struct XPoint getInterpoint(double,int,int,int,int);
+bool isPointInBoundary(XPoint&);
+XPoint getMiddlePoint(vector<XPoint>&,int,int,vector<Circle>&);
+double getAngle(double,double,double,double,double);
+static void forCircleRun(vector<Circle>&,Boundary&);
 //xh methods ends

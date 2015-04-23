@@ -762,12 +762,15 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 {
 
 	for(unsigned int i = 0;i<circles.size();i++){  //再次开始遍历每一个圆
-		vector<r_lineNum> point_Array;   //用于存储每个圆与多边形窗口的交点
+		vector<XPoint> point_Array;  //用于存储每个圆与多边形窗口的交点
 		getInterpointArray(point_Array,i,circles);  //获得存储交点的容器
 
 		if(point_Array.size()==0||point_Array.size()==1) //将完全跟多边形不相交以及相切的情况的圆排除，
 		{
-			bool inBoundary = isPointInBoundary(circles[i].center); //圆心若在多边形内
+			XPoint mm;
+			mm.x = circles[i].center.x;
+			mm.y = circles[i].center.y;
+			bool inBoundary = isPointInBoundary(mm);//圆心若在多边形内
 			if (inBoundary==true)
 			{
 				long _x = boundary.vertexs[0].x-circles[i].center.x;
@@ -787,7 +790,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 					arc2draw.start_point = start_point;
 					arc2draw.end_point = end_point;
 					EnterCriticalSection(&g_cs);  
-					circles_to_draw.push_back(arc2draw);
+					//circles_to_draw.push_back(arc2draw);
 					LeaveCriticalSection(&g_cs); 
 				}
 			}
@@ -797,20 +800,21 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 		else
 		{
 
+			vector<XPoint>::iterator pos;
 			point_Array.push_back(point_Array[0]); //为了便于讨论和计算，在整个交点容器的最后加入第一个交点
 			//当圆刚好过多边形的某一点时，会出现该点被记录两次的情况，故需要进行排除
-			for (int j = 0; j < point_Array.size()-1; j++)
+			for (pos = point_Array.begin()+1; pos != point_Array.end(); pos++)
 			{
-				if (point_Array[j].point.x ==point_Array[j+1].point.x&&point_Array[j].point.y ==point_Array[j+1].point.y)
+				if (abs((*pos).x -(*(pos-1)).x)<0.1 && abs((*pos).y -(*(pos-1)).y)<0.1)
 				{
-					point_Array.erase(point_Array.begin() + j);
-					j--;
+					pos = point_Array.erase(pos);
+					pos--;
 				}
 			}
 			//开始对交点容器中的每一个交点进行遍历
 			for (unsigned int j = 0; j < point_Array.size()-1; j++)
 			{
-				CPoint mid_point = getMiddlePoint(point_Array,i,j,circles); //获得两交点的在圆上的中间点
+				XPoint mid_point = getMiddlePoint(point_Array,i,j,circles); //获得两交点的在圆上的中间点
 				bool mid_in_bound = isPointInBoundary(mid_point);  //判断中间点是否在多边形窗口内
 				if(mid_in_bound == true) //在多边形窗口内，则画整个圆弧 
 				{				
@@ -820,11 +824,42 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 					int end_y = circles[i].center.y+circles[i].radius;
 
 					CRect rect(start_x,start_y,end_x,end_y);
+					CPoint tmp,tmp2;
+					long tmp_xy =(long)(point_Array[j].x);
+					if (point_Array[j].x-tmp_xy>0.5)
+					{
+						tmp.x = tmp_xy+1;
+					}
+					else
+						tmp.x = tmp_xy;
+					
+					tmp_xy =(long)(point_Array[j].y);
+					if (point_Array[j].y-tmp_xy>0.5)
+					{
+						tmp.y = tmp_xy+1;
+					}
+					else
+						tmp.y = tmp_xy;
+					tmp_xy =(long)(point_Array[j+1].x);
+					if (point_Array[j+1].x-tmp_xy>0.5)
+					{
+						tmp2.x = tmp_xy+1;
+					}
+					else
+						tmp2.x = tmp_xy;
+
+					tmp_xy =(long)(point_Array[j+1].y);
+					if (point_Array[j+1].y-tmp_xy>0.5)
+					{
+						tmp2.y = tmp_xy+1;
+					}
+					else
+						tmp2.y = tmp_xy;
 					//dc.Arc(&rect,point_Array[j].point,point_Array[j+1].point);
 					struct _arc2draw arc2draw ;
 					arc2draw.rect = rect;
-					arc2draw.start_point = point_Array[j].point;
-					arc2draw.end_point = point_Array[j+1].point;
+					arc2draw.start_point = tmp;
+					arc2draw.end_point = tmp2;
 					EnterCriticalSection(&g_cs);  
 					circles_to_draw.push_back(arc2draw);
 					LeaveCriticalSection(&g_cs); 
@@ -839,7 +874,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 *功能：给出圆的圆点的坐标和圆上某点的坐标以及半径的长度，通过圆的参数方程，获得该点的角度
 *思路：通过三角函数即可求得。
 */
-double getAngle(long x1,long x2,long y1,long y2,double r)
+double getAngle(double x1,double x2,double y1,double y2,double r)
 {
 	double cos = (double)(x1-x2)/(double)r;
 	double sin = (double)(y1-y2)/(double)r;
@@ -859,10 +894,10 @@ double getAngle(long x1,long x2,long y1,long y2,double r)
 *思路：通过圆的参数方程，将两交点的坐标代入方程中，求得两交点各自的角度，（使用getAngle函数）
 *	   然后通过三角计算，获得中间点的角度，将此角度代入圆的参数方程，就可以求得中间点的坐标
 */
-CPoint getMiddlePoint(vector<r_lineNum>& point_Array,int i,int j,vector<Circle>& circles2)
+XPoint getMiddlePoint(vector<XPoint>& point_Array,int i,int j,vector<Circle>& circles2)
 {
-	double a1 = getAngle(point_Array[j].point.x,circles2[i].center.x,point_Array[j].point.y,circles2[i].center.y,circles2[i].radius);
-	double a2 = getAngle(point_Array[j+1].point.x,circles2[i].center.x,point_Array[j+1].point.y,circles2[i].center.y,circles2[i].radius);
+	double a1 = getAngle(point_Array[j].x,circles2[i].center.x,point_Array[j].y,circles2[i].center.y,circles2[i].radius);
+	double a2 = getAngle(point_Array[j+1].x,circles2[i].center.x,point_Array[j+1].y,circles2[i].center.y,circles2[i].radius);
 	double mid_a = 0;
 
 	if(a1<PI&&a2<PI)
@@ -908,7 +943,7 @@ CPoint getMiddlePoint(vector<r_lineNum>& point_Array,int i,int j,vector<Circle>&
 	}
 	double x = circles2[i].center.x+circles2[i].radius*cos(mid_a);
 	double y = circles2[i].center.y+circles2[i].radius*sin(mid_a);
-	CPoint point ;
+	XPoint point ;
 	point.x = x;
 	point.y = y;
 	return point;
@@ -921,7 +956,7 @@ CPoint getMiddlePoint(vector<r_lineNum>& point_Array,int i,int j,vector<Circle>&
 *	   然后判断多边形窗口的每一条边是否与直线l有交点，
 *	   若有，则交点数加一。最后若交点数为偶数，则该点在多边形窗口外部，若为奇数，则该点在多边形窗口内部。
 */
-bool isPointInBoundary(CPoint& point)
+bool isPointInBoundary(XPoint& point)
 {
 	int interNum = 0;
 	long x1 = point.x;
@@ -930,119 +965,115 @@ bool isPointInBoundary(CPoint& point)
 	long y2 = 0;
 	for (unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
-		bool tmp = (boundary.vertexs[i].x==x1)&&(boundary.vertexs[i].y<y1);
-		if ((boundary.vertexs[i].x==x1)&&(boundary.vertexs[i].y<y1)) //对边界点在线上和连续两边界点在线上的情况进行讨论
+		//bool tmp = (boundary.vertexs[i].x==x1)&&(boundary.vertexs[i].y<y1);
+		if ((abs(boundary.vertexs[i].x-point.x)<0.1)&&(boundary.vertexs[i].y<point.y)) //对边界点在线上和连续两边界点在线上的情况进行讨论
 		{
 			if (i==(boundary.vertexs.size()-1))
 			{
-				long between1 =boundary.vertexs[i-1].x-x1;
-				long between2 =boundary.vertexs[1].x-x1;
+				double between1 =boundary.vertexs[i-1].x-point.x;
+				double between2 =boundary.vertexs[1].x-point.x;
+				if (abs(between2)<0.1)
+				{
+					continue;
+				}
+				if(abs(between1)<0.1)
+				{
+					double between3 =boundary.vertexs[i-2].x-point.x;
+					if ((between3>0&&between2<0)||(between3<0&&between2>0)) //暂时不考虑三点同线的情况
+					{
+						interNum++;
+					}
+					continue;
+				}
+			
 				if ((between1>0&&between2<0)||(between1<0&&between2>0))
 				{
 					interNum++;
 				}
-				else if(between1==0)
-				{
-					long between3 =boundary.vertexs[i-2].x-x1;
-					if ((between3>0&&between2<0)||(between3<0&&between2>0))
-					{
-						interNum++;
-					}
-				}
-				/*else if(between2==0)
-				{
-					long between3 =boundary.vertexs[2].x-x1;
-					if ((between3>0&&between1<0)||(between3<0&&between1>0))
-					{
-						interNum++;
-					}
-				}*/
-
+				
 			}
 			else if (i==(boundary.vertexs.size()-2))
 			{
-				long between1 =boundary.vertexs[i-1].x-x1;
-				long between2 =boundary.vertexs[i+1].x-x1;
-				if ((between1>0&&between2<0)||(between1<0&&between2>0))
+				double between1 =boundary.vertexs[i-1].x-point.x;
+				double between2 =boundary.vertexs[i+1].x-point.x;
+				if (abs(between2)<0.1)
 				{
-					interNum++;
+					continue;
 				}
-				else if(between1==0)
+				if(abs(between1)<0.1)
 				{
-					long between3 =boundary.vertexs[i-2].x-x1;
+					double between3 =boundary.vertexs[i-2].x-point.x;
 					if ((between3>0&&between2<0)||(between3<0&&between2>0))
 					{
 						interNum++;
 					}
+					continue;
 				}
-				/*else if(between2==0)
+				
+				if ((between1>0&&between2<0)||(between1<0&&between2>0))
 				{
-					long between3 =boundary.vertexs[1].x-x1;
-					if ((between3>0&&between1<0)||(between3<0&&between1>0))
-					{
-						interNum++;
-					}
-				}*/
+					interNum++;
+				}
 
 			}
 			else if (i==1)
 			{
-				long between1 =boundary.vertexs[2].x-x1;
-				long between2 =boundary.vertexs[0].x-x1;
-				if ((between1>0&&between2<0)||(between1<0&&between2>0))
+				double between1 =boundary.vertexs[0].x-point.x;
+				double between2 =boundary.vertexs[2].x-point.x;
+				if (abs(between2)<0.1)
 				{
-					interNum++;
+					continue;
 				}
-				/*else if(between1==0)
+				if(abs(between1)<0.1)
 				{
-					long between3 =boundary.vertexs[3].x-x1;
+					double between3 =boundary.vertexs[boundary.vertexs.size()-2].x-point.x;
 					if ((between3>0&&between2<0)||(between3<0&&between2>0))
 					{
 						interNum++;
 					}
-				}*/
-				else if(between2==0)
+					continue;
+				}
+				
+				if ((between1>0&&between2<0)||(between1<0&&between2>0))
 				{
-					long between3 =boundary.vertexs[boundary.vertexs.size()-2].x-x1;
-					if ((between3>0&&between1<0)||(between3<0&&between1>0))
-					{
-						interNum++;
-					}
+					interNum++;
 				}
 
 			}
 			else
 			{
-				long between1 =boundary.vertexs[i-1].x-x1;
-				long between2 =boundary.vertexs[i+1].x-x1;
-				if ((between1>0&&between2<0)||(between1<0&&between2>0))
+				double between1 =boundary.vertexs[i-1].x-point.x;
+				double between2 =boundary.vertexs[i+1].x-point.x;
+				if (abs(between2)<0.1)
 				{
-					interNum++;
+					continue;
 				}
-				else if(between1==0)
+				if(abs(between1)<0.1)
 				{
-					long between3 =boundary.vertexs[i-2].x-x1;
+					double between3 =boundary.vertexs[i-2].x-point.x;
 					if ((between3>0&&between2<0)||(between3<0&&between2>0))
 					{
 						interNum++;
 					}
+					continue;
 				}
-				/*else if(between2==0)
+				
+				if ((between1>0&&between2<0)||(between1<0&&between2>0))
 				{
-					long between3 =boundary.vertexs[i+2].x-x1;
-					if ((between3>0&&between1<0)||(between3<0&&between1>0))
-					{
-						interNum++;
-					}
-				}*/
+					interNum++;
+				}
 			}
 		}
 	}
 
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
-		long between1 =boundary.vertexs[i].x-x1;
-		long between2 =boundary.vertexs[i-1].x-x1;
+		double between1 =boundary.vertexs[i].x-point.x;
+		double between2 =boundary.vertexs[i-1].x-point.x;
+		if (abs(between1)<0.1||abs(between2)<0.1)
+		{
+			continue;
+		}
 		if((between1>0&&between2<0)||(between1<0&&between2>0))
 		{
 			long x3 = boundary.vertexs[i].x;
@@ -1052,8 +1083,8 @@ bool isPointInBoundary(CPoint& point)
 			long a = y4-y3;
 			long b = x3-x4;
 			long c = x4*y3-x3*y4;
-			long long isInter1 = (long long)(a*x1+b*y1+c);
-			long long isInter2 = (long long)(a*x2+b*y2+c);
+			long long isInter1 = (long long)(a*point.x+b*point.y+c);
+			long long isInter2 = (long long)(a*point.x+b*y2+c);
 			if((isInter1<=0&&isInter2>=0)||(isInter1>=0&&isInter2<=0))
 			{
 				interNum++;
@@ -1076,14 +1107,14 @@ bool isPointInBoundary(CPoint& point)
 *功能：通过直线参数方程的参数，直线的两交点的坐标，获得该直线上的一个点。
 *思路：通过直线的参数方程可以求得。
 */
-struct r_lineNum getInterpoint(double t,int x1,int x2,int y1,int y2,int i)
+struct XPoint getInterpoint(double t,int x1,int x2,int y1,int y2)
 {
-	long x = x1+(x2-x1)*t;
-	long y = y1+(y2-y1)*t;
-	struct r_lineNum pit;
-	pit.point.x = x;
-	pit.point.y = y;
-	pit.num_line = i;
+	double x = x1+(x2-x1)*t;
+	double y = y1+(y2-y1)*t;
+	struct XPoint pit;
+	pit.x = x;
+	pit.y = y;
+	
 	return pit;
 }
 
@@ -1096,7 +1127,7 @@ struct r_lineNum getInterpoint(double t,int x1,int x2,int y1,int y2,int i)
 *	   然后，对解的值进行判断，若解大于等于0，解小于等于1，则是交点，否则舍去。将解值代入参数方程即可求得交点。
 *	   最后，对交点的顺序进行判断，解值小的值先存入point_Array容器。
 */
-void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Circle>& circle2)
+void getInterpointArray(vector<XPoint>& point_Array,int circle_num,vector<Circle>& circle2)
 {
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
@@ -1125,7 +1156,7 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 			double t = ((double)(-B)/(double)(2*A));
 			if (t>=0&&t<=1)
 			{
-				struct r_lineNum pit = getInterpoint(t,x1,x2,y1,y2,i);
+				struct XPoint pit= getInterpoint(t,x1,x2,y1,y2);
 				point_Array.push_back(pit);
 			}
 			else
@@ -1145,11 +1176,11 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 			}
 			if (t1>=0&&t1<=1)
 			{				
-				struct r_lineNum pit = getInterpoint(t1,x1,x2,y1,y2,i);
+				struct XPoint pit = getInterpoint(t1,x1,x2,y1,y2);
 				point_Array.push_back(pit);
 				if (t2>=0&&t2<=1)
 				{
-					struct r_lineNum pit = getInterpoint(t2,x1,x2,y1,y2,i);
+					struct XPoint pit = getInterpoint(t2,x1,x2,y1,y2);
 					point_Array.push_back(pit);
 				}
 
@@ -1158,7 +1189,7 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 			{
 				if (t2>=0&&t2<=1)
 				{
-					struct r_lineNum pit = getInterpoint(t2,x1,x2,y1,y2,i);
+					struct XPoint pit = getInterpoint(t2,x1,x2,y1,y2);
 					point_Array.push_back(pit);
 				}
 				else
@@ -1172,17 +1203,17 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 	{
 		
 		//以下代码用于将所有的交点按照顺时针排序
-		vector<CPoint> y_up_0;
-		vector<CPoint> y_down_0;
+		vector<XPoint> y_up_0;
+		vector<XPoint> y_down_0;
 		for (int i = 0; i < point_Array.size(); i++)
 		{
-			if (point_Array[i].point.y <= circle2[circle_num].center.y)
+			if (point_Array[i].y <= circle2[circle_num].center.y)
 			{
-				y_down_0.push_back(point_Array[i].point);
+				y_down_0.push_back(point_Array[i]);
 			}
 			else
 			{
-				y_up_0.push_back(point_Array[i].point);
+				y_up_0.push_back(point_Array[i]);
 			}
 		}
 		if (y_down_0.size()>1)
@@ -1193,38 +1224,13 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 				{
 					if (y_down_0[j].x < y_down_0[j+1].x)
 					{
-						CPoint tmp;
+						XPoint tmp;
 						tmp.x = y_down_0[j].x;
 						tmp.y = y_down_0[j].y;
 						y_down_0[j] = y_down_0[j+1];
 						y_down_0[j+1] = tmp;
 					}
-					else if(y_down_0[j].x == y_down_0[j+1].x) //这个可能是由于计算精度损失导致同x不同y的情况
-					{
-						if (y_down_0[j].x < circle2[circle_num].center.x)
-						{
-							if (y_down_0[j].y > y_down_0[j+1].y)
-							{
-								CPoint tmp;
-								tmp.x = y_down_0[j].x;
-								tmp.y = y_down_0[j].y;
-								y_down_0[j] = y_down_0[j+1];
-								y_down_0[j+1] = tmp;
-							}
-						}
-						else
-						{
-							if (y_down_0[j].y < y_down_0[j+1].y)
-							{
-								CPoint tmp;
-								tmp.x = y_down_0[j].x;
-								tmp.y = y_down_0[j].y;
-								y_down_0[j] = y_down_0[j+1];
-								y_down_0[j+1] = tmp;
-							}
-
-						}
-					}
+					
 				}
 			}
 		}
@@ -1236,7 +1242,7 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 				{
 					if (y_up_0[j].x > y_up_0[j+1].x)
 					{
-						CPoint tmp;
+						XPoint tmp;
 						tmp.x = y_up_0[j].x;
 						tmp.y = y_up_0[j].y;
 						y_up_0[j] = y_up_0[j+1];
@@ -1249,20 +1255,14 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 		{
 			for (int i = 0; i < y_down_0.size(); i++)
 			{
-				struct r_lineNum tmp;
-				tmp.point = y_down_0[i];
-				tmp.num_line = 0;
-				point_Array[i] = tmp;
+				point_Array[i] = y_down_0[i];
 			}
 		}
 		if (y_up_0.size()>0)
 		{
 			for (int i = 0; i < y_up_0.size(); i++)
 			{
-				struct r_lineNum tmp;
-				tmp.point = y_up_0[i];
-				tmp.num_line = 0;
-				point_Array[y_down_0.size()+i] = tmp;
+				point_Array[y_down_0.size()+i] = y_up_0[i];
 			}
 		}
 		
@@ -1271,6 +1271,7 @@ void getInterpointArray(vector<r_lineNum>& point_Array,int circle_num,vector<Cir
 	//以上代码用于将所有的交点按照顺时针排序
 
 	}
+	
 }
 
 
