@@ -1104,50 +1104,51 @@ bool isPointInBoundary(CPoint& point)
 
 /*
 *功能：判断点是否在多边形窗口内
-*思路：根据交点法求得某点是否在多边形的窗口内部。通过该点取平行于y轴的直线l，
-*	   先判断直线是否穿过多边形窗口的点。若穿过，判断与该点相邻的两边是否在l的两边，
-*	   若在，则交点数加一，若在同一边，则交点数加二。
-*	   然后判断多边形窗口的每一条边是否与直线l有交点，
-*	   若有，则交点数加一。最后若交点数为偶数，则该点在多边形窗口外部，若为奇数，则该点在多边形窗口内部。
+*思路：根据交点法求得某点是否在多边形的窗口内部。通过该点取平行于y轴的直线L，
+*	   先判断直线是否穿过多边形窗口的点。若穿过，判断与该点相邻的两点p1，p2是否在L的两边，
+*	   若在，则交点数加一，若在同一边，则交点数加二，若两点中特定方向的一点p1也在直线L上，那么取该方向的下一点p3，
+*      若p3和p2在直线L的两边，则交点数加一，否则不加（这个方法必须确保多边形没有连续三点共线）。
+*	   然后判断多边形窗口的每一条边是否与直线l有交点（不考虑多边形的端点），若有，则交点数加一。
+*	   最后若交点数为偶数，则该点在多边形窗口外部，若为奇数，则该点在多边形窗口内部。 
 */
 bool isPointInBoundary(XPoint& point)
 {
-
-	int interNum = 0;
-	long x1 = point.x;
+	
+	int interNum = 0;   //交点数
+	long x1 = point.x;  //（x1，y1）是判断的点，（x2，y2）是过（x1，y1）平行于y轴的无穷小的点
 	long y1 = point.y;
 	long x2 = x1;
 	long y2 = 0;
 	for (unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
-		//bool tmp = (boundary.vertexs[i].x==x1)&&(boundary.vertexs[i].y<y1);
+		//先判断平行于y轴的直线L过多边形的端点的情况
 		if ((abs(boundary.vertexs[i].x-point.x)<DOUBLE_DEGREE)&&(boundary.vertexs[i].y<point.y)) //对边界点在线上和连续两边界点在线上的情况进行讨论
 		{
-			if (i==(boundary.vertexs.size()-1))
+			if (i==(boundary.vertexs.size()-1)) //当该点是多边形的最后一个点的时候
 			{
-				double between1 =boundary.vertexs[i-1].x-point.x;
-				double between2 =boundary.vertexs[1].x-point.x;
-				if (abs(between2)<DOUBLE_DEGREE)
+				double between1 =boundary.vertexs[i-1].x-point.x; //它的上一个点
+				double between2 =boundary.vertexs[1].x-point.x;  //它的下一个点
+				if (abs(between2)<DOUBLE_DEGREE) //当它的下一个点也是在直线L上，忽略
 				{
 					continue;
 				}
-				if(abs(between1)<DOUBLE_DEGREE)
+				if(abs(between1)<DOUBLE_DEGREE) //当它的上一个点也是在直线L上，计算该方向上的下一个点
 				{
 					double between3 =boundary.vertexs[i-2].x-point.x;
-					if ((between3>0&&between2<0)||(between3<0&&between2>0)) //暂时不考虑三点同线的情况
+					if ((between3>0&&between2<0)||(between3<0&&between2>0)) //（暂时不考虑三点同线的情况），p3和p2在直线L的两边，则交点数加一
 					{
 						interNum++;
 					}
 					continue;
 				}
 			
-				if ((between1>0&&between2<0)||(between1<0&&between2>0))
+				if ((between1>0&&between2<0)||(between1<0&&between2>0)) //判断与该点相邻的两点p1，p2是否在L的两边，若在，则交点数加一
 				{
 					interNum++;
 				}
 				
 			}
-			else if (i==(boundary.vertexs.size()-2))
+			else if (i==(boundary.vertexs.size()-2)) // //当该点是多边形的倒数第二个点的时候
 			{
 				double between1 =boundary.vertexs[i-1].x-point.x;
 				double between2 =boundary.vertexs[i+1].x-point.x;
@@ -1171,7 +1172,7 @@ bool isPointInBoundary(XPoint& point)
 				}
 
 			}
-			else if (i==1)
+			else if (i==1)      //当该点是多边形的第二个点的时候
 			{
 				double between1 =boundary.vertexs[0].x-point.x;
 				double between2 =boundary.vertexs[2].x-point.x;
@@ -1195,7 +1196,7 @@ bool isPointInBoundary(XPoint& point)
 				}
 
 			}
-			else
+			else   //当该点在多边形的点的中间位置时
 			{
 				double between1 =boundary.vertexs[i-1].x-point.x;
 				double between2 =boundary.vertexs[i+1].x-point.x;
@@ -1221,15 +1222,15 @@ bool isPointInBoundary(XPoint& point)
 		}
 	}
 
-	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
+	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--) //考虑直线L直接和多边形的边相交的情况，不考虑多边形边的端点
 	{
 		double between1 =boundary.vertexs[i].x-point.x;
 		double between2 =boundary.vertexs[i-1].x-point.x;
-		if (abs(between1)<DOUBLE_DEGREE||abs(between2)<DOUBLE_DEGREE)
+		if (abs(between1)<DOUBLE_DEGREE||abs(between2)<DOUBLE_DEGREE)  //若端点过直线L，则忽略
 		{
 			continue;
 		}
-		if((between1>0&&between2<0)||(between1<0&&between2>0))
+		if((between1>0&&between2<0)||(between1<0&&between2>0)) //若边的端点在直线L的两边，则判断直线L的两端点是否在边的两端
 		{
 			long x3 = boundary.vertexs[i].x;
 		    long x4 = boundary.vertexs[i-1].x;
