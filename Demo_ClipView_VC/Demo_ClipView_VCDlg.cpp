@@ -23,7 +23,7 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
-#define TEST_CIRCLES 1
+#define TEST_CIRCLES 0
 
 //是否绘出初始数据和裁剪结果，使用0来方便测试
 #define TEST_DRAW_INITIAL 1
@@ -73,6 +73,7 @@ Boundary boundary;
 //用于存储需要画的线的全局变量的容器
 vector<Line> lines_to_draw;   //用于存储所有要画的线
 vector<_arc2draw> circles_to_draw;  //用于存储所有要画的弧线
+
 vector<Line> sbLines;
 
 CRITICAL_SECTION g_cs;  //声明保护临界区
@@ -548,6 +549,8 @@ void ComputeNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
 }
 
 
+
+
 /*
 *功能：处理凹多边形的裁剪
 *思路：先预处理判断出每个点的凹凸性，算出所有多边形的边的外矩形框。
@@ -638,7 +641,7 @@ void dealConcave(vector<Line>& lines,Boundary& boundary)
 			CPoint pt;
 			pt.x=(LONG)((q2.x-q1.x)*t+q1.x);
 			pt.y=(LONG)((q2.y-q1.y)*t+q1.y);
-			if (t>=0 && t<=1) //如果算出的参数t满足 t>=0 && t<=1, 说明交点在线段上，将它加入交点集
+			if (t>=-0.000000001 && t<=1.000000001) //如果算出的参数t满足 t>=0 && t<=1, 说明交点在线段上，将它加入交点集
 			{
 				IntersectPoint ip;
 				if (t1>0)
@@ -666,6 +669,16 @@ void dealConcave(vector<Line>& lines,Boundary& boundary)
 			if (isPointInBoundary(lines[i].startpoint))//如果在多边形内
 				//dlg->DrawLine(lines[i],clrLine);
 			{
+				Line l=lines[i];
+				/*if (l.startpoint.x<whole.left || l.startpoint.x>whole.right || l.startpoint.y<whole.bottom || l.startpoint.y>whole.top
+				||l.endpoint.x<whole.left || l.endpoint.x>whole.right || l.endpoint.y<whole.bottom || l.endpoint.y>whole.top)
+				{
+					EnterCriticalSection(&g_cs); 
+					sbLines.push_back(lines[i]);
+					LeaveCriticalSection(&g_cs); 
+					continue;
+				}*/
+
 				EnterCriticalSection(&g_cs); 
 				lines_to_draw.push_back(lines[i]);
 				LeaveCriticalSection(&g_cs); 
@@ -725,14 +738,14 @@ void dealConcave(vector<Line>& lines,Boundary& boundary)
 					LeaveCriticalSection(&g_cs); 
 					continue;
 				}*/
-				//if (l.startpoint.x<whole.left || l.startpoint.x>whole.right || l.startpoint.y<whole.bottom || l.startpoint.y>whole.top
-				//	||l.endpoint.x<whole.left || l.endpoint.x>whole.right || l.endpoint.y<whole.bottom || l.endpoint.y>whole.top)
-				//{
-				//	EnterCriticalSection(&g_cs); 
-				//	sbLines.push_back(lines[i]);
-				//	LeaveCriticalSection(&g_cs); 
-				//	continue;
-				//}
+				/*if (l.startpoint.x<whole.left || l.startpoint.x>whole.right || l.startpoint.y<whole.bottom || l.startpoint.y>whole.top
+					||l.endpoint.x<whole.left || l.endpoint.x>whole.right || l.endpoint.y<whole.bottom || l.endpoint.y>whole.top)
+				{
+					EnterCriticalSection(&g_cs); 
+					sbLines.push_back(lines[i]);
+					LeaveCriticalSection(&g_cs); 
+					continue;
+				}*/
 
 				EnterCriticalSection(&g_cs); 
 				lines_to_draw.push_back(l);
@@ -969,7 +982,7 @@ XPoint getMiddlePoint(vector<XPoint>& point_Array,int i,int j,vector<Circle>& ci
 */
 bool isPointInBoundary(CPoint& point)
 {
-	int interNum = 0;
+	/*int interNum = 0;
 	long x1 = point.x;
 	long y1 = point.y;
 	long x2 = x1;
@@ -1028,9 +1041,63 @@ bool isPointInBoundary(CPoint& point)
 	else
 	{
 		return false;
-	}
+	}*/
+	XPoint xp;
+	xp.x=point.x;
+	xp.y=point.y;
+	//long clock_start=clock();
 
+	bool ans=isPointInBoundary(xp);
+	//bool ans=false;
+
+	//Line l;
+	//l.startpoint=point;
+	//CPoint endp=point;
+	//endp.y=0;
+	//l.endpoint=endp;
+	//RECT r;
+	//r.bottom=0;
+	//r.top=l.startpoint.y;
+	//r.left=l.startpoint.x;
+	//r.right=r.left;
+
+	//int edgenum=boundary.vertexs.size()-1;
+	//int totIntersect=0;
+
+	//for (int j=0;j<edgenum;j++)//枚举每条多边形的边
+	//{
+	//	//快速排除法
+	//	if (r.left>edgeRect[j].right || r.right<edgeRect[j].left ||
+	//		r.top<edgeRect[j].bottom || r.bottom>edgeRect[j].top)
+	//		continue;
+
+	//	//跨立试验
+	//	CPoint p1=boundary.vertexs[j];
+	//	CPoint p2=boundary.vertexs[j+1];//p1p2为多边形的边
+	//	CPoint q1=l.startpoint;
+	//	CPoint q2=l.endpoint;//q1q2为线段
+
+
+	//	long long a= ((long long)CrossMulti(p1,q1,p1,p2)) * (CrossMulti(p1,p2,p1,q2));
+	//	long long b= ((long long)CrossMulti(q1,p1,q1,q2)) * (CrossMulti(q1,q2,q1,p2));
+	//	if (a>=0 && b>=0)//相交
+	//		totIntersect++;
+	//}
+
+	//if (totIntersect%2==0)
+	//	ans=false;
+	//else
+	//	ans=true; 
+/*
+
+
+	long clock_end=clock();
+	totclock1+=clock_end-clock_start;*/
+
+	return ans;
 }
+
+
 
 /*
 *功能：判断点是否在多边形窗口内
@@ -1042,6 +1109,7 @@ bool isPointInBoundary(CPoint& point)
 */
 bool isPointInBoundary(XPoint& point)
 {
+
 	int interNum = 0;
 	long x1 = point.x;
 	long y1 = point.y;
@@ -1152,30 +1220,33 @@ bool isPointInBoundary(XPoint& point)
 
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
-		double between1 =boundary.vertexs[i].x-point.x;
-		double between2 =boundary.vertexs[i-1].x-point.x;
-		if (abs(between1)<0.1||abs(between2)<0.1)
-		{
+		long x3 = boundary.vertexs[i].x;
+		long x4 = boundary.vertexs[i-1].x;
+		double between1 =x3-point.x;
+		double between2 =x4-point.x;
+		if (abs(between1)<0.1||abs(between2)<0.1||(between1>0&&between2>0)||(between1<0&&between2<0))//已处理过或者不可能相交的，跳过
 			continue;
-		}
-		if((between1>0&&between2<0)||(between1<0&&between2>0))
-		{
-			long x3 = boundary.vertexs[i].x;
-		    long x4 = boundary.vertexs[i-1].x;
-			long y3 = boundary.vertexs[i].y;
-			long y4 = boundary.vertexs[i-1].y;
-			long a = y4-y3;
-			long b = x3-x4;
-			long c = x4*y3-x3*y4;
-			long long isInter1 = (long long)(a*point.x+b*point.y+c);
-			long long isInter2 = (long long)(a*point.x+b*y2+c);
-			if((isInter1<=0&&isInter2>=0)||(isInter1>=0&&isInter2<=0))
-			{
-				interNum++;
-			}
 
+		long y3 = boundary.vertexs[i].y;
+		long y4 = boundary.vertexs[i-1].y;
+		if (min(y3,y4)>point.y)//不可能相交,跳过
+			continue;
+
+		//跨立试验，判断是否有交点
+		long a = y4-y3;
+		long b = x3-x4;
+		long c = x4*y3-x3*y4;
+		long long isInter1 = (long long)(a*point.x+b*point.y+c);
+		long long isInter2 = (long long)(a*point.x+b*y2+c);
+		if((isInter1<=0&&isInter2>=0)||(isInter1>=0&&isInter2<=0))
+		{
+			interNum++;
 		}
+
+	
 	}
+
+
 	if(interNum%2!=0)
 	{
 		return true;
