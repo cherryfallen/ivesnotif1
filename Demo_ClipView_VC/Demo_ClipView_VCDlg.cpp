@@ -23,13 +23,16 @@ using namespace std;
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
-#define TEST_CIRCLES 0
+#define TEST_CIRCLES 1
 
 //是否绘出初始数据和裁剪结果，使用0来方便测试
 #define TEST_DRAW_INITIAL 1
 #define TEST_DRAW_ANSWER 1
 
 #define MAX_THREAD_NUMBER 16
+
+//double相等可接受精度
+#define DOUBLE_DEGREE 0.01
 
 //裁剪算法相关定义
 const int INTIALIZE=0;
@@ -808,7 +811,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary)
 					arc2draw.start_point = start_point;
 					arc2draw.end_point = end_point;
 					EnterCriticalSection(&g_cs);  
-					//circles_to_draw.push_back(arc2draw);
+					circles_to_draw.push_back(arc2draw);
 					LeaveCriticalSection(&g_cs); 
 				}
 			}
@@ -1118,17 +1121,17 @@ bool isPointInBoundary(XPoint& point)
 	for (unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
 		//bool tmp = (boundary.vertexs[i].x==x1)&&(boundary.vertexs[i].y<y1);
-		if ((abs(boundary.vertexs[i].x-point.x)<0.1)&&(boundary.vertexs[i].y<point.y)) //对边界点在线上和连续两边界点在线上的情况进行讨论
+		if ((abs(boundary.vertexs[i].x-point.x)<DOUBLE_DEGREE)&&(boundary.vertexs[i].y<point.y)) //对边界点在线上和连续两边界点在线上的情况进行讨论
 		{
 			if (i==(boundary.vertexs.size()-1))
 			{
 				double between1 =boundary.vertexs[i-1].x-point.x;
 				double between2 =boundary.vertexs[1].x-point.x;
-				if (abs(between2)<0.1)
+				if (abs(between2)<DOUBLE_DEGREE)
 				{
 					continue;
 				}
-				if(abs(between1)<0.1)
+				if(abs(between1)<DOUBLE_DEGREE)
 				{
 					double between3 =boundary.vertexs[i-2].x-point.x;
 					if ((between3>0&&between2<0)||(between3<0&&between2>0)) //暂时不考虑三点同线的情况
@@ -1148,11 +1151,11 @@ bool isPointInBoundary(XPoint& point)
 			{
 				double between1 =boundary.vertexs[i-1].x-point.x;
 				double between2 =boundary.vertexs[i+1].x-point.x;
-				if (abs(between2)<0.1)
+				if (abs(between2)<DOUBLE_DEGREE)
 				{
 					continue;
 				}
-				if(abs(between1)<0.1)
+				if(abs(between1)<DOUBLE_DEGREE)
 				{
 					double between3 =boundary.vertexs[i-2].x-point.x;
 					if ((between3>0&&between2<0)||(between3<0&&between2>0))
@@ -1172,11 +1175,11 @@ bool isPointInBoundary(XPoint& point)
 			{
 				double between1 =boundary.vertexs[0].x-point.x;
 				double between2 =boundary.vertexs[2].x-point.x;
-				if (abs(between2)<0.1)
+				if (abs(between2)<DOUBLE_DEGREE)
 				{
 					continue;
 				}
-				if(abs(between1)<0.1)
+				if(abs(between1)<DOUBLE_DEGREE)
 				{
 					double between3 =boundary.vertexs[boundary.vertexs.size()-2].x-point.x;
 					if ((between3>0&&between2<0)||(between3<0&&between2>0))
@@ -1196,11 +1199,11 @@ bool isPointInBoundary(XPoint& point)
 			{
 				double between1 =boundary.vertexs[i-1].x-point.x;
 				double between2 =boundary.vertexs[i+1].x-point.x;
-				if (abs(between2)<0.1)
+				if (abs(between2)<DOUBLE_DEGREE)
 				{
 					continue;
 				}
-				if(abs(between1)<0.1)
+				if(abs(between1)<DOUBLE_DEGREE)
 				{
 					double between3 =boundary.vertexs[i-2].x-point.x;
 					if ((between3>0&&between2<0)||(between3<0&&between2>0))
@@ -1220,33 +1223,30 @@ bool isPointInBoundary(XPoint& point)
 
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
-		long x3 = boundary.vertexs[i].x;
-		long x4 = boundary.vertexs[i-1].x;
-		double between1 =x3-point.x;
-		double between2 =x4-point.x;
-		if (abs(between1)<0.1||abs(between2)<0.1||(between1>0&&between2>0)||(between1<0&&between2<0))//已处理过或者不可能相交的，跳过
-			continue;
-
-		long y3 = boundary.vertexs[i].y;
-		long y4 = boundary.vertexs[i-1].y;
-		if (min(y3,y4)>point.y)//不可能相交,跳过
-			continue;
-
-		//跨立试验，判断是否有交点
-		long a = y4-y3;
-		long b = x3-x4;
-		long c = x4*y3-x3*y4;
-		long long isInter1 = (long long)(a*point.x+b*point.y+c);
-		long long isInter2 = (long long)(a*point.x+b*y2+c);
-		if((isInter1<=0&&isInter2>=0)||(isInter1>=0&&isInter2<=0))
+		double between1 =boundary.vertexs[i].x-point.x;
+		double between2 =boundary.vertexs[i-1].x-point.x;
+		if (abs(between1)<DOUBLE_DEGREE||abs(between2)<DOUBLE_DEGREE)
 		{
-			interNum++;
+			continue;
 		}
+		if((between1>0&&between2<0)||(between1<0&&between2>0))
+		{
+			long x3 = boundary.vertexs[i].x;
+		    long x4 = boundary.vertexs[i-1].x;
+			long y3 = boundary.vertexs[i].y;
+			long y4 = boundary.vertexs[i-1].y;
+			long a = y4-y3;
+			long b = x3-x4;
+			long c = x4*y3-x3*y4;
+			long long isInter1 = (long long)(a*point.x+b*point.y+c);
+			long long isInter2 = (long long)(a*point.x+b*y2+c);
+			if((isInter1<=0&&isInter2>=0)||(isInter1>=0&&isInter2<=0))
+			{
+				interNum++;
+			}
 
-	
+		}
 	}
-
-
 	if(interNum%2!=0)
 	{
 		return true;
