@@ -90,15 +90,17 @@ RECT whole;
 
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
-	//boundary里面可能会有连续两点相同的异常情况，先进行处理清除此异常情况
+	//处理boundary里面连续两点相同的异常情况，先进行处理清除此异常情况
 	vector<CPoint>::iterator iter;
 	for (iter = boundary.vertexs.begin()+1; iter != boundary.vertexs.end();)
 		if ((*iter).x ==(*(iter-1)).x&&(*iter).y ==(*(iter-1)).y)
 			iter = boundary.vertexs.erase(iter);
 		else iter++;
+	//数据中第1个点和最后1个点是相同的
 	boundary.vertexs[0].x=boundary.vertexs[boundary.vertexs.size()-1].x;
 	boundary.vertexs[0].y=boundary.vertexs[boundary.vertexs.size()-1].y;
 
+	//处理boundary里连续三点共线的情况
 	for (iter = boundary.vertexs.begin()+1; iter != boundary.vertexs.end();)
 	{
 		CPoint p1,p2,p3;
@@ -126,7 +128,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	//先保留足够的空间，以免之后空间不够时发生内存拷贝
 	lines_to_draw.reserve(lines.size()*2);
-	circles_to_draw.reserve(circles.size()*22);
+	circles_to_draw.reserve(circles.size()*2);
 
 	//根据CPU数量确定线程数
 	SYSTEM_INFO info;
@@ -177,11 +179,10 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	//Info[THREAD_NUMBER-1].dlg = this;
 
-	JudgeConvexPoint(convexPoint);
-	PreprocessNormalVector(normalVector,convexPoint);
-	PreprocessEdgeRect(boundary);
-
-	
+	//预处理
+	preprocessJudgeConvexPoint(convexPoint);
+	preprocessNormalVector(normalVector,convexPoint);
+	preprocessEdgeRect(boundary);
 
 
 	BeginTimeAndMemoryMonitor();
@@ -481,7 +482,7 @@ void dealConvex(vector<Line>& lines,Boundary& boundary)
 *功能：计算两个向量的叉积
 *参数：a1,a2为第一个向量的起点与终点，b1,b2为第二个向量的起点与终点
 */
-int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
+int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 {
 	int ux=a2.x-a1.x;
 	int uy=a2.y-a1.y;
@@ -507,7 +508,7 @@ bool Compare(IntersectPoint a,IntersectPoint b)
 *思路：求相邻两边的向量的叉积，已知凸点的值与凹点的值正负性不同，并且x坐标最大的点一定是凸点。
 *	   先计算相邻两边的向量的叉积并保存，同时找出x最大的点。再通过与x最大的点比较正负性得出点的凹凸性。
 */
-void JudgeConvexPoint(vector<BOOL>& convexPoint)
+void preprocessJudgeConvexPoint(vector<BOOL>& convexPoint)
 {
 	int dotnum=boundary.vertexs.size()-1;//多边形顶点数
 	vector<int> z;
@@ -522,7 +523,7 @@ void JudgeConvexPoint(vector<BOOL>& convexPoint)
 			p1=&boundary.vertexs[i-1];
 		CPoint* p2=&boundary.vertexs[i];
 		CPoint* p3=&boundary.vertexs[i+1];
-		int crossmulti=CrossMulti(*p1,*p2,*p2,*p3);//计算相邻两条边的叉积（即p1p2与p2p3）
+		int crossmulti=crossMulti(*p1,*p2,*p2,*p3);//计算相邻两条边的叉积（即p1p2与p2p3）
 
 		z.push_back(crossmulti);
 		if (p2->x>max)//找出x最大的点，记录
@@ -547,7 +548,7 @@ void JudgeConvexPoint(vector<BOOL>& convexPoint)
 *	   若该法向量与前一条边的向量的点积为正，则将法向量反向。
 *	   如果这两条边的公共顶点为凹点，则将该法向量再反向。
 */
-void PreprocessNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
+void preprocessNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
 {
 
 	int edgenum=boundary.vertexs.size()-1;//多边形边数
@@ -599,7 +600,7 @@ void PreprocessNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoi
 *思路：某线段的外矩形框是以该线段为对角线的矩形，
 *	   用于快速排除线段与边不相交的情况（当边的外矩形框与线段的外矩形框不相交时）。   
 */
-void PreprocessEdgeRect(const Boundary boundary)
+void preprocessEdgeRect(const Boundary boundary)
 {
 	whole.left=100000;
 	whole.right=-1;
@@ -670,8 +671,8 @@ void dealConcave(vector<Line>& lines,Boundary& boundary)
 			CPoint q2=lines[i].endpoint;//q1q2为线段
 
 
-			long long a= ((long long)CrossMulti(p1,q1,p1,p2)) * (CrossMulti(p1,p2,p1,q2));
-			long long b= ((long long)CrossMulti(q1,p1,q1,q2)) * (CrossMulti(q1,q2,q1,p2));
+			long long a= ((long long)crossMulti(p1,q1,p1,p2)) * (crossMulti(p1,p2,p1,q2));
+			long long b= ((long long)crossMulti(q1,p1,q1,q2)) * (crossMulti(q1,q2,q1,p2));
 			if (!(a>=0 && b>=0))//不相交就跳过这条边
 				continue;
 

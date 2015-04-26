@@ -90,14 +90,14 @@ public:
 };
 
 //dqc methods begins
-void JudgeConvexPoint(vector<BOOL>&);
-void PreprocessNormalVector(vector<Vector>&,vector<BOOL>&);
-void PreprocessEdgeRect(const Boundary);
+void preprocessJudgeConvexPoint(vector<BOOL>&);
+void preprocessNormalVector(vector<Vector>&,vector<BOOL>&);
+void preprocessEdgeRect(const Boundary);
 
 //vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
 //vector<RECT> edgeRect;//多边形的边的外矩形框
 //vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
-int CrossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
+int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
 void dealConcave(vector<Line>&,Boundary&);
 //dqc methods ends
 
