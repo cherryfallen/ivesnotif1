@@ -81,18 +81,48 @@ vector<Line> sbLines;
 
 CRITICAL_SECTION g_cs;  //声明保护临界区
 
+
+vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
+vector<RECT> edgeRect;//多边形的边的外矩形框
+vector<Vector> normalVector;//多边形的边的内法向量
+RECT whole;
+
+
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
 	//boundary里面可能会有连续两点相同的异常情况，先进行处理清除此异常情况
-	vector<CPoint>::iterator pos;
-	for (pos = boundary.vertexs.begin()+1; pos != boundary.vertexs.end(); pos++)
+	vector<CPoint>::iterator iter;
+	for (iter = boundary.vertexs.begin()+1; iter != boundary.vertexs.end();)
+		if ((*iter).x ==(*(iter-1)).x&&(*iter).y ==(*(iter-1)).y)
+			iter = boundary.vertexs.erase(iter);
+		else iter++;
+	boundary.vertexs[0].x=boundary.vertexs[boundary.vertexs.size()-1].x;
+	boundary.vertexs[0].y=boundary.vertexs[boundary.vertexs.size()-1].y;
+
+	for (iter = boundary.vertexs.begin()+1; iter != boundary.vertexs.end();)
 	{
-		if ((*pos).x ==(*(pos-1)).x&&(*pos).y ==(*(pos-1)).y)
+		CPoint p1,p2,p3;
+		if (iter==boundary.vertexs.end()-1)
 		{
-			pos = boundary.vertexs.erase(pos);
-			pos--;
+			p1=*(iter-1);
+			p2=*(iter);
+			p3=*(boundary.vertexs.begin()+1);
 		}
+		else
+		{
+			p1=*(iter-1);
+			p2=*iter;
+			p3=*(iter+1);
+		}
+
+		if ((p2.x-p1.x)*(p3.y-p2.y)==(p3.x-p2.x)*(p2.y-p1.y))//三点共线
+			iter = boundary.vertexs.erase(iter);
+		else
+			iter++;
 	}
+	boundary.vertexs[0].x=boundary.vertexs[boundary.vertexs.size()-1].x;
+	boundary.vertexs[0].y=boundary.vertexs[boundary.vertexs.size()-1].y;
+
 
 	//先保留足够的空间，以免之后空间不够时发生内存拷贝
 	lines_to_draw.reserve(lines.size()*2);
@@ -147,6 +177,13 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	//Info[THREAD_NUMBER-1].dlg = this;
 
+	JudgeConvexPoint(convexPoint);
+	PreprocessNormalVector(normalVector,convexPoint);
+	PreprocessEdgeRect(boundary);
+
+	
+
+
 	BeginTimeAndMemoryMonitor();
 
 	startclock=clock();
@@ -190,6 +227,10 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	vector<Line>().swap(lines);
 	vector<Circle>().swap(circles);
 	vector<ThreadTime>().swap(thread_use_time);
+	vector<BOOL>().swap(convexPoint);
+	vector<RECT>().swap(edgeRect);
+	vector<Vector>().swap(normalVector);
+
 	penLine.DeleteObject();
 	penCircle.DeleteObject();
 }
@@ -506,8 +547,9 @@ void JudgeConvexPoint(vector<BOOL>& convexPoint)
 *	   若该法向量与前一条边的向量的点积为正，则将法向量反向。
 *	   如果这两条边的公共顶点为凹点，则将该法向量再反向。
 */
-void ComputeNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
+void PreprocessNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
 {
+
 	int edgenum=boundary.vertexs.size()-1;//多边形边数
 
 	for (int i=0;i<edgenum;i++)
@@ -552,33 +594,18 @@ void ComputeNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
 }
 
 
-
-
 /*
-*功能：处理凹多边形的裁剪
-*思路：先预处理判断出每个点的凹凸性，算出所有多边形的边的外矩形框。
-*	   然后枚举每条线段与每条多边形的边，先通过快速排除法排除明显不可能相交的边，再通过跨立试验进一步判断是否有交点。
-*	   接着用改进的cyrus-beck算法算出交点的值，以及交点的性质（出点还是入点），并将线段的起点作为入点，终点作为出点。
-*	   然后处理当线段与多边形的顶点相交的特殊情况。
-*	   最后寻找所有符合“入点-出点”的线段作为显示的线段。
+*功能：计算多边形的边的外矩形框
+*思路：某线段的外矩形框是以该线段为对角线的矩形，
+*	   用于快速排除线段与边不相交的情况（当边的外矩形框与线段的外矩形框不相交时）。   
 */
-void dealConcave(vector<Line>& lines,Boundary& boundary)
+void PreprocessEdgeRect(const Boundary boundary)
 {
-	//TODO 在此处完成裁剪算法和裁剪后显示程序
-	COLORREF clrLine = RGB(0,255,0);
-	vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
-	vector<RECT> edgeRect;//多边形的边的外矩形框
-	vector<Vector> normalVector;//多边形的边的内法向量
-	vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
-	JudgeConvexPoint(convexPoint);
-	ComputeNormalVector(normalVector,convexPoint);
-
-	RECT whole;
 	whole.left=100000;
 	whole.right=-1;
 	whole.top=-1;
 	whole.bottom=10000;
-	//先算出所有多边形的边的外矩形框
+
 	int edgenum=boundary.vertexs.size()-1;
 	for (int i=0;i<edgenum;i++)
 	{
@@ -594,8 +621,23 @@ void dealConcave(vector<Line>& lines,Boundary& boundary)
 		if (r.right>whole.right) whole.right=r.right;
 		edgeRect.push_back(r);
 	}
+}
 
 
+
+/*
+*功能：处理凹多边形的裁剪
+*思路：先预处理判断出每个点的凹凸性，算出所有多边形的边的外矩形框。
+*	   然后枚举每条线段与每条多边形的边，先通过快速排除法排除明显不可能相交的边，再通过跨立试验进一步判断是否有交点。
+*	   接着用改进的cyrus-beck算法算出交点的值，以及交点的性质（出点还是入点），并将线段的起点作为入点，终点作为出点。
+*	   然后处理当线段与多边形的顶点相交的特殊情况。
+*	   最后寻找所有符合“入点-出点”的线段作为显示的线段。
+*/
+void dealConcave(vector<Line>& lines,Boundary& boundary)
+{
+	vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
+
+	int edgenum=boundary.vertexs.size()-1;
 	int linenum=lines.size();
 	RECT r;
 	for (int i =0;i<linenum;i++)//枚举每条线段
