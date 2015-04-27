@@ -98,14 +98,14 @@ void preprocessEdgeRect(const Boundary);
 //vector<RECT> edgeRect;//多边形的边的外矩形框
 //vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
 int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
-void dealConcave(vector<Line>&,Boundary&);
+void dealConcave(vector<Line>&,Boundary&,int);
 //dqc methods ends
 
 
 
 
 //gs methods begins	
-void dealConvex(vector<Line>&,Boundary&);
+void dealConvex(vector<Line>&,Boundary&,int);
 bool InBox(Line&);
 int Multinomial(int,int,int,int,int,int);
 CPoint CrossPoint(Line&,Line&);
@@ -122,5 +122,5 @@ bool isPointInBoundary(XPoint&);
 bool isPointInBoundary(CPoint&);
 XPoint getMiddlePoint(vector<XPoint>&,int,int,vector<Circle>&);
 double getAngle(double,double,double,double,double);
-static void forCircleRun(vector<Circle>&,Boundary&);
+static void forCircleRun(vector<Circle>&,Boundary&,int);
 //xh methods ends
