@@ -5,6 +5,7 @@
 #include "Demo_ClipView_VC.h"
 #include "Demo_ClipView_VCDlg.h"
 #include "afxdialogex.h"
+#include <TlHelp32.h>
 using namespace std;
 
 #ifdef _DEBUG
@@ -26,7 +27,7 @@ using namespace std;
 #define TEST_CIRCLES 1
 
 //是否绘出初始数据和裁剪结果，使用0来方便测试
-#define TEST_DRAW_INITIAL 0
+#define TEST_DRAW_INITIAL 1
 #define TEST_DRAW_ANSWER 1
 
 #define MAX_THREAD_NUMBER 16
@@ -89,8 +90,6 @@ CRITICAL_SECTION critical_sections[MAX_THREAD_NUMBER];
 vector<Line> sbLines;
 
 
-
-
 vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
 vector<RECT> edgeRect;//多边形的边的外矩形框
 vector<Vector> normalVector;//多边形的边的内法向量
@@ -99,6 +98,9 @@ RECT whole;
 
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
+
+	BeginTimeAndMemoryMonitor();
+
 	//处理boundary里面连续两点相同的异常情况，先进行处理清除此异常情况
 	vector<CPoint>::iterator iter;
 	for (iter = boundary.vertexs.begin()+1; iter != boundary.vertexs.end();)
@@ -180,8 +182,6 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	int nThreadLines=(int)(lines.size()/THREAD_NUMBER);
 	int nThreadCircles = (int)(circles.size()/THREAD_NUMBER);
 
-
-
 	for(int i=0;i<THREAD_NUMBER;i++){
 		int upperNumber=(i+1)*nThreadLines;
 		if (i==THREAD_NUMBER-1)
@@ -207,8 +207,6 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	preprocessNormalVector(normalVector,convexPoint);
 	preprocessEdgeRect(boundary);
 
-
-	BeginTimeAndMemoryMonitor();
 
 	startclock=clock();
 
@@ -290,8 +288,6 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 			//	dc.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
 	}
 
-	EndTimeAndMemoryMonitor();
-
 	for (int i=0;i<THREAD_NUMBER;i++)
 	{
 		DeleteCriticalSection(&critical_sections[i]);
@@ -314,6 +310,8 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 
 	penLine.DeleteObject();
 	penCircle.DeleteObject();
+
+	EndTimeAndMemoryMonitor();	
 }
 
 
@@ -1875,6 +1873,7 @@ BOOL CDemo_ClipView_VCDlg::LoadTestCaseData(CString xmlPath, CString caseID)
 	}
 	return TRUE;
 }
+
 void CDemo_ClipView_VCDlg::ClearTestCaseData()
 {
 	hasOutCanvasData = FALSE;
@@ -1882,12 +1881,10 @@ void CDemo_ClipView_VCDlg::ClearTestCaseData()
 	boundary.vertexs.clear();
 	circles.clear();
 	lines.clear();
-
-	//added
-	//convexPoint.clear();
-	//edgeRect.clear();
-	//intersectPoint.clear();
-
+	if (beginTIdList.GetSize() > 0)
+	{
+		beginTIdList.RemoveAll();
+	}
 	CClientDC dc(this);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));
 }
@@ -1900,7 +1897,7 @@ void CALLBACK TimerProc(HWND hWnd, UINT nMsg, UINT nTimerid, DWORD dwTime)
 	HANDLE handle=GetCurrentProcess();
 	PROCESS_MEMORY_COUNTERS pmc;    
 	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
-	double curMemory = pmc.PeakPagefileUsage;
+	double curMemory = pmc.PagefileUsage;
 	if (curMemory > CDemo_ClipView_VCDlg::maxMemory)
 	{
 		CDemo_ClipView_VCDlg::maxMemory = curMemory;
@@ -1909,7 +1906,7 @@ void CALLBACK TimerProc(HWND hWnd, UINT nMsg, UINT nTimerid, DWORD dwTime)
 UINT ThreadProc(LPVOID lParam);
 UINT ThreadProc(LPVOID lParam)
 {
-	SetTimer(NULL, ++CDemo_ClipView_VCDlg::timerId, /*频率*/10/*毫秒*/, TimerProc);
+	SetTimer(NULL, ++CDemo_ClipView_VCDlg::timerId, /*频率*/1/*毫秒*/, TimerProc);
 	int itemp;
 	MSG msg;
 	while((itemp=GetMessage(&msg, NULL, NULL, NULL)) && (-1 != itemp))
@@ -1934,12 +1931,21 @@ void CDemo_ClipView_VCDlg::BeginTimeAndMemoryMonitor()
 	m_stc_drawing.SetWindowText("裁剪中...");
 	m_stc_info1.ShowWindow(SW_HIDE);
 	m_stc_info2.ShowWindow(SW_HIDE);
+	maxMemory = 0;
+	m_bStopTimer = false;
+	GetThreadIdList(beginTIdList);
+	CWinThread* pThread = AfxBeginThread(ThreadProc, NULL);
+	if (pThread)
+	{
+		beginTIdList.AddTail(pThread->m_nThreadID);
+	}
 	HANDLE handle=GetCurrentProcess();
 	PROCESS_MEMORY_COUNTERS pmc;    
 	GetProcessMemoryInfo(handle,&pmc,sizeof(pmc));
 	startMemory = pmc.PagefileUsage;
-	maxMemory = 0;
-	AfxBeginThread(ThreadProc, NULL);
+	//maxMemory = 0;
+	//AfxBeginThread(ThreadProc, NULL);
+	//GetThreadIdList(beginTIdList);
 	startTime = clock();
 }
 void CDemo_ClipView_VCDlg::EndTimeAndMemoryMonitor()
@@ -1961,6 +1967,36 @@ void CDemo_ClipView_VCDlg::EndTimeAndMemoryMonitor()
 	CString strMemory;
 	strMemory.Format("占用内存:  %lfM", useMemoryM);
 	m_stc_info2.SetWindowText(strMemory);
+	CList<int> endTIdList;
+	GetThreadIdList(endTIdList);
+	POSITION pos = endTIdList.GetHeadPosition();
+	while(pos)
+	{
+		int tId = endTIdList.GetAt(pos);
+		CString strId;
+		strId.Format(_T("%d"), tId);
+		if (!beginTIdList.Find(tId))
+		{
+			HANDLE th = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tId);
+			if (th)
+			{
+				DWORD exitCode = 0;
+				GetExitCodeThread(th, &exitCode);
+				CloseHandle(th);
+				if (exitCode == STILL_ACTIVE)
+				{
+					MessageBox(_T("新建线程仍在运行:") + strId, _T("线程消息"), MB_OK);
+					break;
+				}
+			}
+			else
+			{
+				MessageBox(_T("新建线程无法访问:") + strId, _T("线程消息"), MB_OK);
+				break;
+			}
+		}
+		endTIdList.GetNext(pos);
+	}
 }
 void CDemo_ClipView_VCDlg::DrawTestCase(CString xmlPath, CString caseID)
 {
@@ -2058,4 +2094,28 @@ void CDemo_ClipView_VCDlg::DrawBoundary(Boundary boundary, COLORREF clr)
 	dc.LineTo(startPoint);
 
 	dc.SelectObject(penOld);
+}
+
+BOOL CDemo_ClipView_VCDlg::GetThreadIdList(CList<int>& tIdList)
+{
+	int pID = _getpid();
+	HANDLE hThreadSnap = INVALID_HANDLE_VALUE;
+	THREADENTRY32 te32;
+	hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pID);
+	if (hThreadSnap == INVALID_HANDLE_VALUE)
+	{
+		return FALSE;
+	}
+	te32.dwSize = sizeof(THREADENTRY32);
+	BOOL bGetThread = Thread32First(hThreadSnap, &te32);
+	while(bGetThread)
+	{
+		if (te32.th32OwnerProcessID == pID)
+		{
+			tIdList.AddTail(te32.th32ThreadID);
+		}
+		bGetThread = Thread32Next(hThreadSnap, &te32);
+	}
+	CloseHandle(hThreadSnap);
+	return TRUE;
 }

@@ -65,6 +65,7 @@ private:
 	double startMemory;
 	double endMemory;
 	BOOL hasOutCanvasData;
+	CList<int> beginTIdList;
 
 	void ClearTestCaseData();
 	BOOL LoadTestCaseData(CString xmlPath, CString caseID);
@@ -77,11 +78,15 @@ private:
 	BOOL IsLineOutCanvas(Line line);
 	BOOL IsCircleOutCanvas(Circle circle);
 	BOOL IsBoundaryOutCanvas(Boundary boundary);
+	BOOL GetThreadIdList(CList<int>& tIdList);
 
 public:
 	static double maxMemory;
 	static bool m_bStopTimer;
 	static int timerId;
+	/*vector<Line> lines;
+	vector<Circle> circles;
+	Boundary boundary;*/
 	void DrawLine(Line line, COLORREF clr);
 	void DrawCircle(Circle circle, COLORREF clr);
 	void DrawBoundary(Boundary boundary, COLORREF clr);
