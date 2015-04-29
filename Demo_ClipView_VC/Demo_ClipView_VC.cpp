@@ -85,7 +85,9 @@ BOOL CDemo_ClipView_VCApp::InitInstance()
 	if (pShellManager != NULL)
 	{
 		delete pShellManager;
+		pShellManager=NULL;
 	}
+	
 
 	// 由于对话框已关闭，所以将返回 FALSE 以便退出应用程序，
 	//  而不是启动应用程序的消息泵。

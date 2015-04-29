@@ -8,9 +8,11 @@
 #include <TlHelp32.h>
 using namespace std;
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
+
+//用于查找内存泄漏
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
 
 #define PI 3.141592653
 
@@ -21,6 +23,10 @@ using namespace std;
 #define INFO_HEIGHT		50
 #define TESTDATA_XML1  "TestData1.xml"
 #define TESTDATA_XML2  "TestData2.xml"
+
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#endif
 
 //如果为0，将不载入也不处理，以方便测试性能
 #define TEST_LINES 1
@@ -222,7 +228,6 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	//for (int i = 0; i < THREAD_NUMBER; i++)
 	//	WaitForSingleObject(hThread[i],INFINITE);
 
-
 	//等待线程全部返回
 	while (WaitForMultipleObjects(THREAD_NUMBER,hThread,true,THREAD_CHECK_INTERVAL)!=WAIT_OBJECT_0)
 	{
@@ -299,6 +304,10 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	//vector<Line>().swap(lines_to_draw);
 	//circles_to_draw.clear();
 	//vector<_arc2draw>().swap(circles_to_draw);
+
+	//delete结构体指针
+	
+
 	vector<Line>().swap(lines_drawing);
 	vector<_arc2draw>().swap(circles_drawing);
 	vector<Line>().swap(lines);
@@ -308,8 +317,20 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	vector<RECT>().swap(edgeRect);
 	vector<Vector>().swap(normalVector);
 
+
+	for(int i=0;i<THREAD_NUMBER;i++){
+		vector<Line>().swap(Info[i].thread_lines);
+		vector<Circle>().swap(Info[i].thread_circles);
+	}
+	delete [] Info;
+    Info = NULL;
+
 	penLine.DeleteObject();
 	penCircle.DeleteObject();
+
+
+	//输出泄漏信息
+	_CrtDumpMemoryLeaks();
 
 	EndTimeAndMemoryMonitor();	
 }
