@@ -1343,26 +1343,26 @@ bool isPointInBoundary(XPoint& point)
 		}
 	}
 
-	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--) //考虑直线L直接和多边形的边相交的情况，不考虑多边形边的端点
+	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
 		double between1 =boundary.vertexs[i].x-point.x;
 		double between2 =boundary.vertexs[i-1].x-point.x;
-		if (abs(between1)<DOUBLE_DEGREE||abs(between2)<DOUBLE_DEGREE)  //若端点过直线L，则忽略
+		if (abs(between1)<DOUBLE_DEGREE||abs(between2)<DOUBLE_DEGREE)
 		{
 			continue;
 		}
-		if((between1>0&&between2<0)||(between1<0&&between2>0)) //若边的端点在直线L的两边，则判断直线L的两端点是否在边的两端
+		if((between1>0&&between2<0)||(between1<0&&between2>0))
 		{
 			long x3 = boundary.vertexs[i].x;
-			long x4 = boundary.vertexs[i-1].x;
+		    long x4 = boundary.vertexs[i-1].x;
 			long y3 = boundary.vertexs[i].y;
 			long y4 = boundary.vertexs[i-1].y;
 			long a = y4-y3;
 			long b = x3-x4;
 			long c = x4*y3-x3*y4;
-			long long isInter1 = (long long)(a*point.x+b*point.y+c);
-			long long isInter2 = (long long)(a*point.x+b*y2+c);
-			if((isInter1<=0&&isInter2>=0)||(isInter1>=0&&isInter2<=0))
+			double isInter1 = a*point.x+b*point.y+c;
+			double isInter2 = a*point.x+b*y2+c;
+			if((isInter1<0&&isInter2>0)||(isInter1>0&&isInter2<0))
 			{
 				interNum++;
 			}
