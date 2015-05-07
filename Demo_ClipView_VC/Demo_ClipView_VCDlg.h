@@ -15,6 +15,41 @@ using std::vector;
 #pragma comment(lib,"psapi.lib")
 #include "precise.h"
 
+#ifdef _DEBUG
+#define new DEBUG_NEW
+#endif
+
+#define PI 3.141592653
+
+// CDemo_ClipView_VCDlg 对话框
+
+#define CANVAS_WIDTH	800	
+#define CANVAS_HEIGHT	600
+#define INFO_HEIGHT		50
+#define TESTDATA_XML1  "TestData1.xml"
+#define TESTDATA_XML2  "TestData2.xml"
+
+//如果为0，将不载入也不处理，以方便测试性能
+#define TEST_LINES 1
+#define TEST_CIRCLES 1
+
+//是否绘出初始数据和裁剪结果，使用0来方便测试
+#define TEST_DRAW_INITIAL 1
+#define TEST_DRAW_ANSWER 1
+
+#define MAX_THREAD_NUMBER 16
+
+//double相等可接受精度
+#define DOUBLE_DEGREE 0.01
+
+//线程检查间隔
+#define THREAD_CHECK_INTERVAL 5
+//最小的绘图大小
+#define MINIMUM_DRAW_SIZE 100
+//检查内存泄漏
+#define _CRTDBG_MAP_ALLOC
+
+
 struct Vector
 {
 	double x,y;
@@ -22,6 +57,23 @@ struct Vector
 struct XPoint{
 	double x;
 	double y;
+};
+struct ThreadTime
+{
+	int i;
+	double time;
+};
+struct  _param   {   //这个结构是用于保存每个进程需要画的圆、线、多边形等
+	vector<Line> thread_lines;
+	vector<Circle> thread_circles;
+	Boundary boundary;
+	int i;
+};
+
+struct  _arc2draw   {  //这个结构是用于保存一个需要画的弧线
+	CRect rect;
+	CPoint start_point;
+	CPoint end_point;
 };
 
 // CDemo_ClipView_VCDlg 对话框
@@ -84,9 +136,6 @@ public:
 	static double maxMemory;
 	static bool m_bStopTimer;
 	static int timerId;
-	/*vector<Line> lines;
-	vector<Circle> circles;
-	Boundary boundary;*/
 	void DrawLine(Line line, COLORREF clr);
 	void DrawCircle(Circle circle, COLORREF clr);
 	void DrawBoundary(Boundary boundary, COLORREF clr);
@@ -98,10 +147,6 @@ public:
 void preprocessJudgeConvexPoint(vector<BOOL>&);
 void preprocessNormalVector(vector<Vector>&,vector<BOOL>&);
 void preprocessEdgeRect(const Boundary);
-
-//vector<BOOL> convexPoint;//多边形的点的凹凸性，true为凸点
-//vector<RECT> edgeRect;//多边形的边的外矩形框
-//vector<IntersectPoint> intersectPoint;//线段的所有交点（也包括线段的起点与终点）
 int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
 void dealConcave(vector<Line>&,Boundary&,int);
 //dqc methods ends
