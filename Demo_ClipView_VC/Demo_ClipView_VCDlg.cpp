@@ -515,7 +515,6 @@ bool InBox(Line& line){
 	else return true;
 }
 
-
 /*
 *功能：过点(x1,y1)(x2,y2)一般式直线方程为(y2-y1)x+(x1-x2)y+x2y1-x1y2=0，
 *      根据上述多项式判断(x,y)与(x1,y1)(x,2,y2)线段的位置,返回多项式值
@@ -683,7 +682,53 @@ void dealConvex(vector<Line>& lines,Boundary& boundary,int threadNumber)
 {
 	//开始 处理凸多边形窗口
 	for(int i=0;i<lines.size();i++){
+		bool overlap=isOverlap(lines[i]);
+		if (overlap)
+		{
+				EnterCriticalSection(&critical_line_number[2]); 
+				line_overlap_bound++;
+				LeaveCriticalSection(&critical_line_number[2]); 
+		}
+		int size=boundary.vertexs.size()-1;
+		bool haveIntersect=false;
+		for (int ii=0;ii<size;ii++)
+		{
+			CPoint p1=boundary.vertexs[ii];
+		    CPoint p2=boundary.vertexs[ii+1];
+			if(Intersect(p1,p2,lines[i])){
+				haveIntersect=true;
+				break;
+			}
+		}
 		
+		//开始 没有交点的情况
+		if (!haveIntersect)
+		{
+			if (isPointInBoundary(lines[i].startpoint))							//如果在多边形内
+			{
+				Line l=lines[i];
+				EnterCriticalSection(&critical_sections[threadNumber]); 
+				lines_to_draw[threadNumber].push_back(lines[i]);
+				LeaveCriticalSection(&critical_sections[threadNumber]);				
+				
+				if (!overlap)
+				{
+					EnterCriticalSection(&critical_line_number[0]); 
+					line_in_bound++;
+					LeaveCriticalSection(&critical_line_number[0]); 
+				}
+			}
+			else if (!overlap)
+
+			{
+				EnterCriticalSection(&critical_line_number[1]); 
+				line_out_bound++;
+				LeaveCriticalSection(&critical_line_number[1]); 
+			}
+			continue;
+		}
+		//结束 没有交点的情况
+
 		if(InBox(lines[i])){													//先判断线段是否在包围盒内，若明显不在则不显示该线段，
 																				//否则继续以下步骤
 			Line line=result(lines[i]);
