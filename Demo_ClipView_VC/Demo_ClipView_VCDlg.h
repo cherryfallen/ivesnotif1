@@ -149,8 +149,9 @@ public:
 void preprocessJudgeConvexPoint(vector<BOOL>&);
 void preprocessNormalVector(vector<Vector>&,vector<BOOL>&);
 void preprocessEdgeRect(const Boundary);
-
-int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
+inline bool isPointInLine(CPoint& p,CPoint& p1,CPoint& p2,int i);
+bool isOverlap(Line l);
+inline int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
 void dealConcave(vector<Line>&,Boundary&,int);
 //dqc methods ends
 

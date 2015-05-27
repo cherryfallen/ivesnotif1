@@ -26,8 +26,11 @@ vector<Line> lines;                                     //用于存储读取到的所有线
 vector<Circle> circles;									//用于存储读取到的所有圆
 Boundary boundary;										//用于存储读取到的多边形窗口
 
-int circle_in_boun = 0;									//圆在多边形内的数量
-int circle_inter_boun = 0;								//圆与多边形相交的数量
+int circle_in_bound;									//圆在多边形内的数量
+int circle_inter_bound;								//圆与多边形相交的数量
+int line_in_bound;
+int line_out_bound;
+int line_overlap_bound;
 
 //用于存储需要画的线的全局变量的容器
 vector<Line> lines_to_draw[MAX_THREAD_NUMBER];			//用于存储所有要画的线
@@ -37,6 +40,7 @@ vector<_arc2draw> circles_drawing;						//用于存储正在画的圆
 
 CRITICAL_SECTION critical_sections[MAX_THREAD_NUMBER];	//为每个线程分配一个临界区
 CRITICAL_SECTION critical_circle_number[2];				//为圆在多边形内部和相交个数计数创建临界区
+CRITICAL_SECTION critical_line_number[3];				//为线在多边形内部和相交个数计数创建临界区
 
 bool isConvexPoly;										//多边形的凹凸性，以选择不同的算法
 vector<BOOL> convexPoint;								//多边形的点的凹凸性，true为凸点
@@ -181,6 +185,14 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	BeginMonitor();
 	//TODO 在此处完成裁剪算法和裁剪后显示程序，并修改需要显示的图形信息
 
+	//开始 初始化结果信息
+	circle_in_bound=0;
+	circle_inter_bound=0;
+	line_in_bound=0;
+	line_out_bound=0;
+	line_overlap_bound=0;
+	//结束 初始化结果信息
+
 	//开始 记录图形信息
 	int lines_num = lines.size();
 	int circles_num = circles.size();
@@ -249,8 +261,12 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	//开始 初始化临界资源
 	for (int i=0;i<THREAD_NUMBER;i++)
 		InitializeCriticalSection(&critical_sections[i]);
-		InitializeCriticalSection(&critical_circle_number[0]);
-		InitializeCriticalSection(&critical_circle_number[1]);
+	for (int i=0;i<2;i++)
+		InitializeCriticalSection(&critical_circle_number[i]);
+	for (int i=0;i<3;i++)
+		InitializeCriticalSection(&critical_line_number[i]);
+
+
 	//结束 初始化临界资源
 
 	CClientDC dc(this);
@@ -355,13 +371,8 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 				LeaveCriticalSection(&critical_sections[i]);				//离开对临界资源critical_sections[i]进行访问
 
 				//开始 对第k线程交换出来的圆进行绘制
-				for (vector<_arc2draw>::iterator iter= 
-					circles_drawing.begin();iter!= circles_drawing.end();
-					iter++)
-				{
-					dc.Arc(&((*iter).rect),(*iter).start_point,
-						(*iter).end_point);
-				}
+				for (vector<_arc2draw>::iterator iter=circles_drawing.begin();iter!= circles_drawing.end();iter++)
+					dc.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
 				//结束 对第k线程交换出来的圆进行绘制
 				circles_drawing.clear();									//清空绘图容器
 			}
@@ -391,12 +402,13 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	//结束 画剩下的线和圆弧
 
 	//开始 计算圆在多边形外部的情况
-	int circle_out_boun = circles_num-circle_inter_boun-circle_in_boun;
+	int circle_out_bound = circles_num-circle_inter_bound-circle_in_bound;
+	int line_inter_bound = lines_num-line_in_bound-line_out_bound-line_overlap_bound;
 	//结束 计算圆在多边形外部的情况
 	
 	//开始 输出图形复杂程度
 	CString text;
-	text.Format("共有%d条线，%d个圆和%d个边界，其中%d个图形在多边形内部，%d个图形在多边形外部。共有%d个图形和多边形相交，d个图形和多边形重合",lines_num,circles_num,boundarys_num,circle_in_boun,circle_out_boun,circle_inter_boun);
+	text.Format("共有%d条线，%d个圆和%d个边界，其中%d个图形在多边形内部，%d个图形在多边形外部。共有%d个图形和多边形相交，%d个图形和多边形重合",lines_num,circles_num,boundarys_num,line_in_bound+circle_in_bound,line_out_bound+circle_out_bound,line_inter_bound+circle_inter_bound,line_overlap_bound);
 	m_stc_info2.SetWindowText(text);
 	//结束 输出图形复杂程度
 
@@ -408,6 +420,12 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		vector<_arc2draw>().swap(circles_to_draw[i]);
 	}
 	
+	for (int i=0;i<3;i++)
+		DeleteCriticalSection(&critical_line_number[i]);
+	for (int i=0;i<2;i++)
+		DeleteCriticalSection(&critical_circle_number[i]);
+
+
 	vector<Line>().swap(lines_drawing);
 	vector<_arc2draw>().swap(circles_drawing);
 	vector<Line>().swap(lines);
@@ -448,21 +466,14 @@ DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc2(LPVOID lpParam)
 {  
 	_param  * Info = ( _param *)lpParam; 
 
-	double starttime=clock();
-
-	ThreadTime a;
-	a.i=Info->i;
-	a.time=1.0*(starttime-startclock)/CLOCKS_PER_SEC;
-	thread_use_time.push_back(a);
-	
 	//开始 进行线的裁剪
 	if (TEST_LINES)                                                       
 	{
-		if (isConvexPoly)
+	/*	if (isConvexPoly)
 			dealConvex(Info->thread_lines,Info->boundary,Info->i);
-		else
-			dealConcave(Info->thread_lines,Info->boundary,Info->i);
-
+		else*/
+		
+		dealConcave(Info->thread_lines,Info->boundary,Info->i);
 
 	}
 	//结束 进行线的裁剪
@@ -472,13 +483,13 @@ DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc2(LPVOID lpParam)
 		forCircleRun(Info->thread_circles,Info->boundary,Info->i);
 	//结束 进行圆的裁剪
 
-	double endtime=clock();
-	a.i=Info->i;
-	a.time=1.0*(endtime-startclock)/CLOCKS_PER_SEC;
-	thread_use_time.push_back(a);
-
 	return 0;                                                             //线程返回
 }
+
+
+
+
+
 
 /*----------------------------------------------- 凸多边形线裁剪算法 starts--------------------------------------------------------*/
 
@@ -698,7 +709,7 @@ void dealConvex(vector<Line>& lines,Boundary& boundary,int threadNumber)
 *功能：计算两个向量的叉积
 *参数：a1,a2为第一个向量的起点与终点，b1,b2为第二个向量的起点与终点
 */
-int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
+inline int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 {
 	int ux=a2.x-a1.x;
 	int uy=a2.y-a1.y;
@@ -706,6 +717,54 @@ int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 	int vy=b2.y-b1.y;
 	return ux*vy-uy*vx;
 }
+
+
+/*
+*功能：判断一个点是否在一条线段上（不包括延长）
+*参数：p为该点，p1、p2为该线段的两个端点，i为该线段对应的边的序号
+*思路：先判断点是否在线段的矩形框内，不是的话直接返回false；再判断(P-P1)X(P2-P1)是否等于0，等于0表示在线段上。
+*/
+inline bool isPointInLine(CPoint& p,CPoint& p1,CPoint& p2,int i)
+{
+	if (p.x<edgeRect[i].left || p.x>edgeRect[i].right || 
+		p.y<edgeRect[i].bottom || p.y>edgeRect[i].top)
+		return false;
+	if (!crossMulti(p1,p,p1,p2)==0)							//判断叉积是否为0
+		return false;
+	return true;
+}
+
+/*
+*功能：判断某一条线段是否与多边形的边界重叠，因为程序需要在最后显示重叠的线段数量
+*思路：先判断是否平行，不平行就跳过；再判断是否有一个端点在另一条线段上，有的话就说明重叠
+*/
+bool isOverlap(Line l)
+{
+	int size=boundary.vertexs.size()-1;
+	for (int i=0;i<size;i++)
+	{
+		CPoint p1=boundary.vertexs[i];
+		CPoint p2=boundary.vertexs[i+1];
+
+		if (!((p2.x-p1.x)*(l.endpoint.y-l.startpoint.y)==(p2.y-p1.y)*(l.endpoint.x-l.startpoint.x)))
+			continue;
+
+		bool isP1InLine=false,isP2InLine=false,isP3InLine=false;
+		isP1InLine=isPointInLine(l.startpoint,p1,p2,i);
+		if (!isP1InLine)
+			isP1InLine=isPointInLine(l.endpoint,p1,p2,i);
+
+		if (!isP1InLine && !isP2InLine)
+			isP3InLine=isPointInLine(p1,l.startpoint,l.endpoint,i);
+
+
+
+		if (isP1InLine || isP2InLine || isP3InLine)
+			return true;
+	}
+	return false;
+}
+
 
 /*
 *功能：用于交点排序的比较函数（按t值得从小到大排序）
@@ -864,6 +923,8 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 		r.left=min(lines[i].startpoint.x,lines[i].endpoint.x);
 		r.right=max(lines[i].startpoint.x,lines[i].endpoint.x);
 
+
+
 		intersectPoint.clear();													//将线段起点当作入点放在首位
 		IntersectPoint ip1;
 		ip1.isIntoPoly=true;
@@ -886,10 +947,8 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 			CPoint p2=boundary.vertexs[j+1];									//p1p2为多边形的边
 			CPoint q1=lines[i].startpoint;
 			CPoint q2=lines[i].endpoint;										//q1q2为线段
-			long long a= 
-				((long long)crossMulti(p1,q1,p1,p2))*(crossMulti(p1,p2,p1,q2));
-			long long b= 
-				((long long)crossMulti(q1,p1,q1,q2))*(crossMulti(q1,q2,q1,p2));
+			long long a= ((long long)crossMulti(p1,q1,p1,p2))*(crossMulti(p1,p2,p1,q2));
+			long long b= ((long long)crossMulti(q1,p1,q1,q2))*(crossMulti(q1,q2,q1,p2));
 			if (!(a>=0 && b>=0))												//不相交就跳过这条边
 				continue;
 			//结束 跨立试验
@@ -925,16 +984,39 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 		}
 
 
+		bool overlap=isOverlap(lines[i]);
+		if (overlap)
+		{
+				EnterCriticalSection(&critical_line_number[2]); 
+				line_overlap_bound++;
+				LeaveCriticalSection(&critical_line_number[2]); 
+		}
+
 		//开始 没有交点的情况
 		if (!haveIntersect)
 		{
 			if (isPointInBoundary(lines[i].startpoint))							//如果在多边形内
 			{
 				Line l=lines[i];
+				
 
 				EnterCriticalSection(&critical_sections[threadNumber]); 
 				lines_to_draw[threadNumber].push_back(lines[i]);
-				LeaveCriticalSection(&critical_sections[threadNumber]); 
+				LeaveCriticalSection(&critical_sections[threadNumber]);				
+				
+				if (!overlap)
+				{
+					EnterCriticalSection(&critical_line_number[0]); 
+					line_in_bound++;
+					LeaveCriticalSection(&critical_line_number[0]); 
+				}
+			}
+			else if (!overlap)
+
+			{
+				EnterCriticalSection(&critical_line_number[1]); 
+				line_out_bound++;
+				LeaveCriticalSection(&critical_line_number[1]); 
 			}
 			continue;
 		}
@@ -948,8 +1030,7 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 		intersectPoint.push_back(ip2);
 		//结束 将线段终点当作出点放在末位
 
-		std::sort(intersectPoint.begin()+1,
-			intersectPoint.end()-1,Compare);									//按t从小到大排序
+		std::sort(intersectPoint.begin()+1,intersectPoint.end()-1,Compare);		//按t从小到大排序
 
 
 		/*开始 处理
@@ -965,10 +1046,8 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 			{
 				//开始 得到该顶点序号
 				int contexPointNumber=max((*iter).contexPoint,(*(iter+1)).contexPoint);
-				if (((*iter).contexPoint==edgenum-1 
-					&& (*(iter+1)).contexPoint==0)
-					||((*(iter+1)).contexPoint==edgenum-1
-					&& (*iter).contexPoint==0))
+				if ( ((*iter).contexPoint==edgenum-1 && (*(iter+1)).contexPoint==0)
+					|| ((*(iter+1)).contexPoint==edgenum-1&& (*iter).contexPoint==0) )
 					contexPointNumber=0;
 				//结束 得到该顶点序号
 
@@ -1039,7 +1118,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 			if (point_Array.size()==1)
 			{
 				EnterCriticalSection(&critical_circle_number[1]);  
-				circle_inter_boun++;
+				circle_inter_bound++;
 				LeaveCriticalSection(&critical_circle_number[1]);
 			}
 			XPoint mm;
@@ -1049,7 +1128,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 			/*if (inBoundary==false&&point_Array.size()==0)
 			{
 				EnterCriticalSection(&critical_circle_number[1]);  
-				circle_inter_boun++;
+				circle_inter_bound++;
 				LeaveCriticalSection(&critical_circle_number[1]);
 			}*/
 			if (inBoundary==true)
@@ -1060,7 +1139,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 				/*if (t == false && point_Array.size()==0)
 				{
 					EnterCriticalSection(&critical_circle_number[1]);  
-					circle_inter_boun++;
+					circle_inter_bound++;
 				LeaveCriticalSection(&critical_circle_number[1]);
 				}*/
 				
@@ -1069,7 +1148,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 					if (point_Array.size()==0)
 					{
 						EnterCriticalSection(&critical_circle_number[0]);  
-						circle_in_boun++;
+						circle_in_bound++;
 						LeaveCriticalSection(&critical_circle_number[0]);
 					}
 					//开始 画整个圆
@@ -1099,7 +1178,7 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 		else if (point_Array.size()>1)
 		{
 			EnterCriticalSection(&critical_circle_number[1]);  
-			circle_inter_boun++;
+			circle_inter_bound++;
 			LeaveCriticalSection(&critical_circle_number[1]);
 
 			vector<XPoint>::iterator pos;
@@ -1851,22 +1930,27 @@ void CDemo_ClipView_VCDlg::DrawTestCase(CString xmlPath, CString caseID)
 		m_stc_drawing.SetWindowText("");
 		return;
 	}
-	
-	COLORREF clrLine = RGB(0,255,0);
-	vector<Line>::iterator iterLine = lines.begin();
-	for (;iterLine != lines.end(); iterLine++)
-	{
-		DrawLine(*iterLine, clrLine);
-	}
 
-	COLORREF clrCircle = RGB(0,0,255);
-	vector<Circle>::iterator iterCircle = circles.begin();
-	for (;iterCircle != circles.end(); iterCircle++)
+	if (TEST_DRAW_INITIAL)
 	{
-		DrawCircle(*iterCircle, clrCircle);
+
+		COLORREF clrBoundary = RGB(255,0,0);
+		DrawBoundary(boundary, clrBoundary);
+
+		COLORREF clrLine = RGB(0,255,0);
+		vector<Line>::iterator iterLine = lines.begin();
+		for (;iterLine != lines.end(); iterLine++)
+		{
+			DrawLine(*iterLine, clrLine);
+		}
+
+		COLORREF clrCircle = RGB(0,0,255);
+		vector<Circle>::iterator iterCircle = circles.begin();
+		for (;iterCircle != circles.end(); iterCircle++)
+		{
+			DrawCircle(*iterCircle, clrCircle);
+		}
 	}
-	COLORREF clrBoundary = RGB(255,0,0);
-	DrawBoundary(boundary, clrBoundary);
 
 	if (hasOutCanvasData)
 	{
