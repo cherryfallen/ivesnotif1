@@ -20,14 +20,4 @@ struct Boundary
 {
 public:
 	vector<CPoint> vertexs;
-	bool isConvex;
-};
-
-struct IntersectPoint
-{
-public:
-	bool isIntoPoly;
-	int contexPoint;
-	double t;
-	CPoint point;
 };

@@ -13,7 +13,7 @@ using std::vector;
 #include "afxwin.h"
 #include <algorithm>
 #pragma comment(lib,"psapi.lib")
-#include "precise.h"
+//#include "precise.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -76,6 +76,16 @@ struct  _arc2draw   {  //这个结构是用于保存一个需要画的弧线
 	CPoint end_point;
 };
 
+struct IntersectPoint
+{
+public:
+	bool isIntoPoly;
+	int contexPoint;
+	double t;
+	CPoint point;
+};
+
+
 // CDemo_ClipView_VCDlg 对话框
 class CDemo_ClipView_VCDlg : public CDialogEx
 {
@@ -100,7 +110,6 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 public:
-
 	CButton m_btn_clip;
 	CStatic m_stc_drawing;
 	CStatic m_stc_info1;
@@ -111,19 +120,16 @@ public:
 
 private:
 	CString curPath;
-	CStringArray complexArray;
 	double startTime;
 	double endTime;
-	double startMemory;
-	double endMemory;
 	BOOL hasOutCanvasData;
 	CList<int> beginTIdList;
 
 	void ClearTestCaseData();
 	BOOL LoadTestCaseData(CString xmlPath, CString caseID);
 	void DrawTestCase(CString xmlPath, CString caseID);
-	void BeginTimeAndMemoryMonitor();
-	void EndTimeAndMemoryMonitor();
+	void BeginMonitor();
+	void EndMonitor();
 	BOOL XmlNodeToPoint(pugi::xml_node node, CPoint& piont);
 	int  SplitCStringToArray(CString str,CStringArray& strArray, CString split);
 	BOOL IsPointOutCanvas(CPoint point);
@@ -133,20 +139,17 @@ private:
 	BOOL GetThreadIdList(CList<int>& tIdList);
 
 public:
-	static double maxMemory;
-	static bool m_bStopTimer;
-	static int timerId;
 	void DrawLine(Line line, COLORREF clr);
 	void DrawCircle(Circle circle, COLORREF clr);
 	void DrawBoundary(Boundary boundary, COLORREF clr);
 	static DWORD WINAPI ThreadProc2(LPVOID lpParam);
-
 };
 
 //dqc methods begins
 void preprocessJudgeConvexPoint(vector<BOOL>&);
 void preprocessNormalVector(vector<Vector>&,vector<BOOL>&);
 void preprocessEdgeRect(const Boundary);
+
 int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
 void dealConcave(vector<Line>&,Boundary&,int);
 //dqc methods ends
