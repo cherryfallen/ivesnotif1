@@ -143,38 +143,80 @@ public:
 	void DrawCircle(Circle circle, COLORREF clr);
 	void DrawBoundary(Boundary boundary, COLORREF clr);
 	static DWORD WINAPI ThreadProc2(LPVOID lpParam);
+
+
+	static const int INTIALIZE=0;
+	//static const double ESP;
+
+
+	static vector<ThreadTime> thread_use_time;						//记录每个线程所花的时间
+	static double startclock;										//开始裁剪时的clock值
+
+
+
+
+	static vector<Line> lines;                                     //用于存储读取到的所有线
+	static vector<Circle> circles;									//用于存储读取到的所有圆
+	static Boundary boundary;										//用于存储读取到的多边形窗口
+
+	static int circle_in_bound;									//圆在多边形内的数量
+	static int circle_inter_bound;								//圆与多边形相交的数量
+	static int line_in_bound;
+	static int line_out_bound;
+	static int line_overlap_bound;
+
+	//用于存储需要画的线的全局变量的容器
+	static vector<Line> lines_to_draw[MAX_THREAD_NUMBER];			//用于存储所有要画的线
+	static vector<_arc2draw> circles_to_draw[MAX_THREAD_NUMBER];    //用于存储所有要画的弧线
+	static vector<Line> lines_drawing;								//用于存储正在画的线
+	static vector<_arc2draw> circles_drawing;						//用于存储正在画的圆
+
+	static CRITICAL_SECTION critical_sections[MAX_THREAD_NUMBER];	//为每个线程分配一个临界区
+	static CRITICAL_SECTION critical_circle_number[2];				//为圆在多边形内部和相交个数计数创建临界区
+	static CRITICAL_SECTION critical_line_number[3];				//为线在多边形内部和相交个数计数创建临界区
+
+	static bool isConvexPoly;										//多边形的凹凸性，以选择不同的算法
+	static vector<BOOL> convexPoint;								//多边形的点的凹凸性，true为凸点
+	static vector<RECT> edgeRect;									//多边形的边的外矩形框
+	static vector<Vector> normalVector;								//多边形的边的内法向量
+  
+
+	//dqc methods begins
+	static void preprocessJudgeConvexPoint(vector<BOOL>&);
+	static void preprocessNormalVector(vector<Vector>&,vector<BOOL>&);
+	static void preprocessEdgeRect(const Boundary);
+	static inline bool isPointInLine(CPoint& p,CPoint& p1,CPoint& p2,int i);
+	static bool isOverlap(Line l);
+	static inline int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
+	static void dealConcave(vector<Line>&,Boundary&,int);
+	static bool Compare(IntersectPoint,IntersectPoint);
+	//dqc methods ends
+
+
+
+
+	//gs methods begins	
+	static void dealConvex(vector<Line>&,Boundary&,int);
+	static bool InBox(Line&);
+	static int Multinomial(int,int,int,int,int,int);
+	static CPoint CrossPoint(Line&,Line&);
+	static bool IsOnline(CPoint&,Line&);
+	static bool Intersect(CPoint&,CPoint&,Line&);
+	static Line result(Line&);
+
+	//gs methods ends
+
+	//xh methods begins
+	static void getInterpointArray(vector<XPoint>&,int,vector<Circle>&);
+	static struct XPoint getInterpoint(double,int,int,int,int);
+	static bool isPointInBoundary(XPoint&);
+	static bool isPointInBoundary(CPoint&);
+	static XPoint getMiddlePoint(vector<XPoint>&,int,int,vector<Circle>&);
+	static double getAngle(double,double,double,double,double);
+	static void forCircleRun(vector<Circle>&,Boundary&,int);
+	//xh methods ends
+
 };
+		
+    
 
-//dqc methods begins
-void preprocessJudgeConvexPoint(vector<BOOL>&);
-void preprocessNormalVector(vector<Vector>&,vector<BOOL>&);
-void preprocessEdgeRect(const Boundary);
-inline bool isPointInLine(CPoint& p,CPoint& p1,CPoint& p2,int i);
-bool isOverlap(Line l);
-inline int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2);
-void dealConcave(vector<Line>&,Boundary&,int);
-//dqc methods ends
-
-
-
-
-//gs methods begins	
-void dealConvex(vector<Line>&,Boundary&,int);
-bool InBox(Line&);
-int Multinomial(int,int,int,int,int,int);
-CPoint CrossPoint(Line&,Line&);
-bool IsOnline(CPoint&,Line&);
-bool Intersect(CPoint&,CPoint&,Line&);
-Line result(Line&);
-
-//gs methods ends
-
-//xh methods begins
-void getInterpointArray(vector<XPoint>&,int,vector<Circle>&);
-struct XPoint getInterpoint(double,int,int,int,int);
-bool isPointInBoundary(XPoint&);
-bool isPointInBoundary(CPoint&);
-XPoint getMiddlePoint(vector<XPoint>&,int,int,vector<Circle>&);
-double getAngle(double,double,double,double,double);
-static void forCircleRun(vector<Circle>&,Boundary&,int);
-//xh methods ends
