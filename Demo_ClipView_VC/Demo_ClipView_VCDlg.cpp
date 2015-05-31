@@ -787,14 +787,19 @@ bool CDemo_ClipView_VCDlg::isOverlap(Line l)
 		if (!((p2.x-p1.x)*(l.endpoint.y-l.startpoint.y)==(p2.y-p1.y)*(l.endpoint.x-l.startpoint.x)))
 			continue;
 
-		bool isP1InLine=false,isP2InLine=false,isP3InLine=false;
+		bool isP1InLine=false,isP2InLine=false,isP3InLine=true;
 		isP1InLine=isPointInLine(l.startpoint,p1,p2,i);
 		if (!isP1InLine)
-			isP1InLine=isPointInLine(l.endpoint,p1,p2,i);
+			isP2InLine=isPointInLine(l.endpoint,p1,p2,i);
 
 		if (!isP1InLine && !isP2InLine)
-			isP3InLine=isPointInLine(p1,l.startpoint,l.endpoint,i);
-
+		{
+			if (p1.x<min(l.startpoint.x,l.endpoint.x) || p1.x>max(l.startpoint.x,l.endpoint.x) || 
+				p1.y<min(l.startpoint.y,l.endpoint.y) || p1.y>max(l.startpoint.y,l.endpoint.y))
+				isP3InLine=false;
+			if (isP3InLine && !crossMulti(l.startpoint,p1,l.startpoint,l.endpoint)==0)
+				isP3InLine=false;
+		}
 
 
 		if (isP1InLine || isP2InLine || isP3InLine)
