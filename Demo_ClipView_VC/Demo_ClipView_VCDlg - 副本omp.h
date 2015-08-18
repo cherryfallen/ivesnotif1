@@ -144,7 +144,16 @@ public:
 	void DrawBoundary(Boundary boundary, COLORREF clr);
 	static DWORD WINAPI ThreadProc2(LPVOID lpParam);
 
+
 	static const int INTIALIZE=0;
+	//static const double ESP;
+
+
+	static vector<ThreadTime> thread_use_time;						//记录每个线程所花的时间
+	static double startclock;										//开始裁剪时的clock值
+
+
+
 
 	static vector<Line> lines;                                     //用于存储读取到的所有线
 	static vector<Circle> circles;									//用于存储读取到的所有圆
@@ -165,6 +174,7 @@ public:
 	static CRITICAL_SECTION critical_sections[MAX_THREAD_NUMBER];	//为每个线程分配一个临界区
 	static CRITICAL_SECTION critical_circle_number[2];				//为圆在多边形内部和相交个数计数创建临界区
 	static CRITICAL_SECTION critical_line_number[3];				//为线在多边形内部和相交个数计数创建临界区
+	static CRITICAL_SECTION critical_thread_number[2];		//为线在多边形内部和相交个数计数创建临界区
 
 
 	static bool isConvexPoly;										//多边形的凹凸性，以选择不同的算法

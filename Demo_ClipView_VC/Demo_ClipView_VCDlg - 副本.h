@@ -162,9 +162,9 @@ public:
 	static vector<Line> lines_drawing;								//用于存储正在画的线
 	static vector<_arc2draw> circles_drawing;						//用于存储正在画的圆
 
-	static CRITICAL_SECTION critical_sections[MAX_THREAD_NUMBER];	//为每个线程分配一个临界区
-	static CRITICAL_SECTION critical_circle_number[2];				//为圆在多边形内部和相交个数计数创建临界区
-	static CRITICAL_SECTION critical_line_number[3];				//为线在多边形内部和相交个数计数创建临界区
+	//static omp_lock_t critical_sections[MAX_THREAD_NUMBER];	//为每个线程分配一个临界区
+	//static omp_lock_t critical_circle_number[2];				//为圆在多边形内部和相交个数计数创建临界区
+	//static omp_lock_t critical_line_number[3];				//为线在多边形内部和相交个数计数创建临界区
 
 
 	static bool isConvexPoly;										//多边形的凹凸性，以选择不同的算法

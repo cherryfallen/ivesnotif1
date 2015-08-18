@@ -1,5 +1,5 @@
 
-// Demo_ClipView_VCDlg.cpp : å®ç°æ–‡ä»¶
+// Demo_ClipView_VCDlg.cpp : ÊµÏÖÎÄ¼ş
 
 #include "stdafx.h"
 #include "Demo_ClipView_VC.h"
@@ -8,43 +8,40 @@
 #include <TlHelp32.h>
 #include <stdlib.h>
 #include <crtdbg.h>
+#include <process.h>
+#include <omp.h>
+#include <stdio.h>
 using namespace std;
 
-
-//è£å‰ªç®—æ³•ç›¸å…³å®šä¹‰
-const int INTIALIZE=0;
-const double ESP=1e-5;
-
-
-vector<ThreadTime> thread_use_time;						//è®°å½•æ¯ä¸ªçº¿ç¨‹æ‰€èŠ±çš„æ—¶é—´
-double startclock;										//å¼€å§‹è£å‰ªæ—¶çš„clockå€¼
 
 
 /*---------------------------------------------- main part begins------------------------------------------------------------------*/
 
-vector<Line> lines;                                     //ç”¨äºå­˜å‚¨è¯»å–åˆ°çš„æ‰€æœ‰çº¿
-vector<Circle> circles;									//ç”¨äºå­˜å‚¨è¯»å–åˆ°çš„æ‰€æœ‰åœ†
-Boundary boundary;										//ç”¨äºå­˜å‚¨è¯»å–åˆ°çš„å¤šè¾¹å½¢çª—å£
+int CDemo_ClipView_VCDlg::circle_in_bound = 0;									//Ô²ÔÚ¶à±ßĞÎÄÚµÄÊıÁ¿
+int CDemo_ClipView_VCDlg::circle_inter_bound = 0;								//Ô²Óë¶à±ßĞÎÏà½»µÄÊıÁ¿
+int CDemo_ClipView_VCDlg::line_in_bound = 0;
+int CDemo_ClipView_VCDlg::line_out_bound = 0;
+int CDemo_ClipView_VCDlg::line_overlap_bound = 0;
 
-int circle_in_boun = 0;									//åœ†åœ¨å¤šè¾¹å½¢å†…çš„æ•°é‡
-int circle_inter_boun = 0;								//åœ†ä¸å¤šè¾¹å½¢ç›¸äº¤çš„æ•°é‡
+vector<Line>CDemo_ClipView_VCDlg::lines_to_draw[MAX_THREAD_NUMBER];				//ÓÃÓÚ´æ´¢ËùÓĞÒª»­µÄÏß
+vector<_arc2draw>CDemo_ClipView_VCDlg::circles_to_draw[MAX_THREAD_NUMBER];		//ÓÃÓÚ´æ´¢ËùÓĞÒª»­µÄ»¡Ïß
+vector<Line>CDemo_ClipView_VCDlg::lines_drawing;								//ÓÃÓÚ´æ´¢ÕıÔÚ»­µÄÏß
+vector<_arc2draw>CDemo_ClipView_VCDlg::circles_drawing;							//ÓÃÓÚ´æ´¢ÕıÔÚ»­µÄÔ²
+vector<Line>CDemo_ClipView_VCDlg::lines;										//ÓÃÓÚ´æ´¢¶ÁÈ¡µ½µÄËùÓĞÏß
+vector<Circle>CDemo_ClipView_VCDlg::circles;									//ÓÃÓÚ´æ´¢¶ÁÈ¡µ½µÄËùÓĞÔ²
+Boundary CDemo_ClipView_VCDlg::boundary;	
 
-//ç”¨äºå­˜å‚¨éœ€è¦ç”»çš„çº¿çš„å…¨å±€å˜é‡çš„å®¹å™¨
-vector<Line> lines_to_draw[MAX_THREAD_NUMBER];			//ç”¨äºå­˜å‚¨æ‰€æœ‰è¦ç”»çš„çº¿
-vector<_arc2draw> circles_to_draw[MAX_THREAD_NUMBER];   //ç”¨äºå­˜å‚¨æ‰€æœ‰è¦ç”»çš„å¼§çº¿
-vector<Line> lines_drawing;								//ç”¨äºå­˜å‚¨æ­£åœ¨ç”»çš„çº¿
-vector<_arc2draw> circles_drawing;						//ç”¨äºå­˜å‚¨æ­£åœ¨ç”»çš„åœ†
+omp_lock_t critical_sections[MAX_THREAD_NUMBER];	//ÎªÃ¿¸öÏß³Ì·ÖÅäÒ»¸öÁÙ½çÇø
+omp_lock_t critical_circle_number[2];				//ÎªÔ²ÔÚ¶à±ßĞÎÄÚ²¿ºÍÏà½»¸öÊı¼ÆÊı´´½¨ÁÙ½çÇø
+omp_lock_t critical_line_number[3];					//ÎªÏßÔÚ¶à±ßĞÎÄÚ²¿ºÍÏà½»¸öÊı¼ÆÊı´´½¨ÁÙ½çÇø
 
-CRITICAL_SECTION critical_sections[MAX_THREAD_NUMBER];	//ä¸ºæ¯ä¸ªçº¿ç¨‹åˆ†é…ä¸€ä¸ªä¸´ç•ŒåŒº
-CRITICAL_SECTION critical_circle_number[2];				//ä¸ºåœ†åœ¨å¤šè¾¹å½¢å†…éƒ¨å’Œç›¸äº¤ä¸ªæ•°è®¡æ•°åˆ›å»ºä¸´ç•ŒåŒº
+bool CDemo_ClipView_VCDlg::isConvexPoly;										//¶à±ßĞÎµÄ°¼Í¹ĞÔ£¬ÒÔÑ¡Ôñ²»Í¬µÄËã·¨
+vector<BOOL>CDemo_ClipView_VCDlg::convexPoint;									//¶à±ßĞÎµÄµãµÄ°¼Í¹ĞÔ£¬trueÎªÍ¹µã
+vector<RECT>CDemo_ClipView_VCDlg::edgeRect;										//¶à±ßĞÎµÄ±ßµÄÍâ¾ØĞÎ¿ò
+vector<Vector>CDemo_ClipView_VCDlg::normalVector;
 
-bool isConvexPoly;										//å¤šè¾¹å½¢çš„å‡¹å‡¸æ€§ï¼Œä»¥é€‰æ‹©ä¸åŒçš„ç®—æ³•
-vector<BOOL> convexPoint;								//å¤šè¾¹å½¢çš„ç‚¹çš„å‡¹å‡¸æ€§ï¼Œtrueä¸ºå‡¸ç‚¹
-vector<RECT> edgeRect;									//å¤šè¾¹å½¢çš„è¾¹çš„å¤–çŸ©å½¢æ¡†
-vector<Vector> normalVector;							//å¤šè¾¹å½¢çš„è¾¹çš„å†…æ³•å‘é‡
 
 /*--------------------------------------------- methods part begins------------------------------------------------------------------*/
-
 CDemo_ClipView_VCDlg::CDemo_ClipView_VCDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(CDemo_ClipView_VCDlg::IDD, pParent)
 {
@@ -72,10 +69,10 @@ BOOL CDemo_ClipView_VCDlg::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
-	// è®¾ç½®æ­¤å¯¹è¯æ¡†çš„å›¾æ ‡ã€‚å½“åº”ç”¨ç¨‹åºä¸»çª—å£ä¸æ˜¯å¯¹è¯æ¡†æ—¶ï¼Œæ¡†æ¶å°†è‡ªåŠ¨
-	//  æ‰§è¡Œæ­¤æ“ä½œ
-	SetIcon(m_hIcon, TRUE);			// è®¾ç½®å¤§å›¾æ ‡
-	SetIcon(m_hIcon, FALSE);		// è®¾ç½®å°å›¾æ ‡
+	// ÉèÖÃ´Ë¶Ô»°¿òµÄÍ¼±ê¡£µ±Ó¦ÓÃ³ÌĞòÖ÷´°¿Ú²»ÊÇ¶Ô»°¿òÊ±£¬¿ò¼Ü½«×Ô¶¯
+	//  Ö´ĞĞ´Ë²Ù×÷
+	SetIcon(m_hIcon, TRUE);			// ÉèÖÃ´óÍ¼±ê
+	SetIcon(m_hIcon, FALSE);		// ÉèÖÃĞ¡Í¼±ê
 	CRect clientRect;
 	GetClientRect(&clientRect);
 	CRect windowRect;
@@ -94,18 +91,18 @@ BOOL CDemo_ClipView_VCDlg::OnInitDialog()
 	curPath.ReleaseBuffer();
 	curPath = curPath.Left(curPath.ReverseFind('\\') + 1);
 
-	return TRUE;  // é™¤éå°†ç„¦ç‚¹è®¾ç½®åˆ°æ§ä»¶ï¼Œå¦åˆ™è¿”å› TRUE
+	return TRUE;  // ³ı·Ç½«½¹µãÉèÖÃµ½¿Ø¼ş£¬·ñÔò·µ»Ø TRUE
 }
 
 void CDemo_ClipView_VCDlg::OnPaint()
 {
 	if (IsIconic())
 	{
-		CPaintDC dc(this); // ç”¨äºç»˜åˆ¶çš„è®¾å¤‡ä¸Šä¸‹æ–‡
+		CPaintDC dc(this); // ÓÃÓÚ»æÖÆµÄÉè±¸ÉÏÏÂÎÄ
 
 		SendMessage(WM_ICONERASEBKGND, reinterpret_cast<WPARAM>(dc.GetSafeHdc()), 0);
 
-		// ä½¿å›¾æ ‡åœ¨å·¥ä½œåŒºçŸ©å½¢ä¸­å±…ä¸­
+		// Ê¹Í¼±êÔÚ¹¤×÷Çø¾ØĞÎÖĞ¾ÓÖĞ
 		int cxIcon = GetSystemMetrics(SM_CXICON);
 		int cyIcon = GetSystemMetrics(SM_CYICON);
 		CRect rect;
@@ -113,7 +110,7 @@ void CDemo_ClipView_VCDlg::OnPaint()
 		int x = (rect.Width() - cxIcon + 1) / 2;
 		int y = (rect.Height() - cyIcon + 1) / 2;
 
-		// ç»˜åˆ¶å›¾æ ‡
+		// »æÖÆÍ¼±ê
 		dc.DrawIcon(x, y, m_hIcon);
 	}
 	else
@@ -179,35 +176,43 @@ void CDemo_ClipView_VCDlg::OnNcLButtonDown(UINT nHitTest, CPoint point)
 void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 {
 	BeginMonitor();
-	//TODO åœ¨æ­¤å¤„å®Œæˆè£å‰ªç®—æ³•å’Œè£å‰ªåæ˜¾ç¤ºç¨‹åºï¼Œå¹¶ä¿®æ”¹éœ€è¦æ˜¾ç¤ºçš„å›¾å½¢ä¿¡æ¯
+	//TODO ÔÚ´Ë´¦Íê³É²Ã¼ôËã·¨ºÍ²Ã¼ôºóÏÔÊ¾³ÌĞò£¬²¢ĞŞ¸ÄĞèÒªÏÔÊ¾µÄÍ¼ĞÎĞÅÏ¢
 
-	//å¼€å§‹ è®°å½•å›¾å½¢ä¿¡æ¯
+	//¿ªÊ¼ ³õÊ¼»¯½á¹ûĞÅÏ¢
+	CDemo_ClipView_VCDlg::circle_in_bound=0;
+	CDemo_ClipView_VCDlg::circle_inter_bound=0;
+	CDemo_ClipView_VCDlg::line_in_bound=0;
+	CDemo_ClipView_VCDlg::line_out_bound=0;
+	CDemo_ClipView_VCDlg::line_overlap_bound=0;
+	//½áÊø ³õÊ¼»¯½á¹ûĞÅÏ¢
+
+	//¿ªÊ¼ ¼ÇÂ¼Í¼ĞÎĞÅÏ¢
 	int lines_num = lines.size();
 	int circles_num = circles.size();
 	int boundarys_num = 1;
-	//ç»“æŸ è®°å½•å›¾å½¢ä¿¡æ¯
+	//½áÊø ¼ÇÂ¼Í¼ĞÎĞÅÏ¢
 
-	//å¼€å§‹ å¤„ç†boundaryé‡Œé¢è¿ç»­ä¸¤ç‚¹ç›¸åŒçš„å¼‚å¸¸æƒ…å†µï¼Œå…ˆè¿›è¡Œå¤„ç†æ¸…é™¤æ­¤å¼‚å¸¸æƒ…å†µ
+	//¿ªÊ¼ ´¦ÀíboundaryÀïÃæÁ¬ĞøÁ½µãÏàÍ¬µÄÒì³£Çé¿ö£¬ÏÈ½øĞĞ´¦ÀíÇå³ı´ËÒì³£Çé¿ö
 	vector<CPoint>::iterator iter;
-	for (iter = boundary.vertexs.begin()+1; iter != boundary.vertexs.end();)
+	for (iter = CDemo_ClipView_VCDlg::boundary.vertexs.begin()+1; iter != CDemo_ClipView_VCDlg::boundary.vertexs.end();)
 	{
 		if ((*iter).x ==(*(iter-1)).x&&(*iter).y ==(*(iter-1)).y)
-			iter = boundary.vertexs.erase(iter);
+			iter = CDemo_ClipView_VCDlg::boundary.vertexs.erase(iter);
 		else iter++;
 	}
-	boundary.vertexs[0].x=boundary.vertexs[boundary.vertexs.size()-1].x;
-	boundary.vertexs[0].y=boundary.vertexs[boundary.vertexs.size()-1].y;
-	//ç»“æŸ å¤„ç†boundaryé‡Œé¢è¿ç»­ä¸¤ç‚¹ç›¸åŒçš„å¼‚å¸¸æƒ…å†µï¼Œå…ˆè¿›è¡Œå¤„ç†æ¸…é™¤æ­¤å¼‚å¸¸æƒ…å†µ
+	CDemo_ClipView_VCDlg::boundary.vertexs[0].x=CDemo_ClipView_VCDlg::boundary.vertexs[CDemo_ClipView_VCDlg::boundary.vertexs.size()-1].x;
+	CDemo_ClipView_VCDlg::boundary.vertexs[0].y=CDemo_ClipView_VCDlg::boundary.vertexs[CDemo_ClipView_VCDlg::boundary.vertexs.size()-1].y;
+	//½áÊø ´¦ÀíboundaryÀïÃæÁ¬ĞøÁ½µãÏàÍ¬µÄÒì³£Çé¿ö£¬ÏÈ½øĞĞ´¦ÀíÇå³ı´ËÒì³£Çé¿ö
 
-	//å¼€å§‹ å¤„ç†boundaryé‡Œè¿ç»­ä¸‰ç‚¹å…±çº¿çš„æƒ…å†µ
-	for (iter = boundary.vertexs.begin()+1; iter != boundary.vertexs.end();)
+	//¿ªÊ¼ ´¦ÀíboundaryÀïÁ¬ĞøÈıµã¹²ÏßµÄÇé¿ö
+	for (iter = CDemo_ClipView_VCDlg::boundary.vertexs.begin()+1; iter != CDemo_ClipView_VCDlg::boundary.vertexs.end();)
 	{
 		CPoint p1,p2,p3;
-		if (iter==boundary.vertexs.end()-1)
+		if (iter==CDemo_ClipView_VCDlg::boundary.vertexs.end()-1)
 		{
 			p1=*(iter-1);
 			p2=*(iter);
-			p3=*(boundary.vertexs.begin()+1);
+			p3=*(CDemo_ClipView_VCDlg::boundary.vertexs.begin()+1);
 		}
 		else
 		{
@@ -216,163 +221,154 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 			p3=*(iter+1);
 		}
 
-		if ((p2.x-p1.x)*(p3.y-p2.y)==(p3.x-p2.x)*(p2.y-p1.y))//ä¸‰ç‚¹å…±çº¿
-			iter = boundary.vertexs.erase(iter);
+		if ((p2.x-p1.x)*(p3.y-p2.y)==(p3.x-p2.x)*(p2.y-p1.y))//Èıµã¹²Ïß
+			iter = CDemo_ClipView_VCDlg::boundary.vertexs.erase(iter);
 		else
 			iter++;
 	}
-	boundary.vertexs[0].x=boundary.vertexs[boundary.vertexs.size()-1].x;
-	boundary.vertexs[0].y=boundary.vertexs[boundary.vertexs.size()-1].y;
-	//ç»“æŸ å¤„ç†boundaryé‡Œè¿ç»­ä¸‰ç‚¹å…±çº¿çš„æƒ…å†µ
+	CDemo_ClipView_VCDlg::boundary.vertexs[0].x=CDemo_ClipView_VCDlg::boundary.vertexs[CDemo_ClipView_VCDlg::boundary.vertexs.size()-1].x;
+	CDemo_ClipView_VCDlg::boundary.vertexs[0].y=CDemo_ClipView_VCDlg::boundary.vertexs[CDemo_ClipView_VCDlg::boundary.vertexs.size()-1].y;
+	//½áÊø ´¦ÀíboundaryÀïÁ¬ĞøÈıµã¹²ÏßµÄÇé¿ö
 
 
-	//å¼€å§‹ æ ¹æ®CPUæ•°é‡ç¡®å®šçº¿ç¨‹æ•°
+	//¿ªÊ¼ ¸ù¾İCPUÊıÁ¿È·¶¨¼ÆËãÏß³ÌÊı
 	SYSTEM_INFO info;
 	GetSystemInfo(&info);
 	int THREAD_NUMBER=info.dwNumberOfProcessors-1;
-	if (THREAD_NUMBER>MAX_THREAD_NUMBER)
-		THREAD_NUMBER=MAX_THREAD_NUMBER;
+	if (THREAD_NUMBER>MAX_THREAD_NUMBER-1)
+		THREAD_NUMBER=MAX_THREAD_NUMBER-1;
 	if (THREAD_NUMBER<1)
 		THREAD_NUMBER=1;
-	//ç»“æŸ æ ¹æ®CPUæ•°é‡ç¡®å®šçº¿ç¨‹æ•°
+	//½áÊø ¸ù¾İCPUÊıÁ¿È·¶¨¼ÆËãÏß³ÌÊı
 
-	//å¼€å§‹ ä¿ç•™è¶³å¤Ÿçš„ç©ºé—´ï¼Œä»¥å…ä¹‹åç©ºé—´ä¸å¤Ÿæ—¶å‘ç”Ÿå†…å­˜æ‹·è´
+	//¿ªÊ¼ ±£Áô×ã¹»µÄ¿Õ¼ä£¬ÒÔÃâÖ®ºó¿Õ¼ä²»¹»Ê±·¢ÉúÄÚ´æ¿½±´
 	for (int i=0;i<THREAD_NUMBER;i++)
 	{
-		lines_to_draw[i].reserve(lines.size()*2/THREAD_NUMBER);
-		circles_to_draw[i].reserve(circles.size()*2/THREAD_NUMBER);
+		CDemo_ClipView_VCDlg::lines_to_draw[i].reserve(CDemo_ClipView_VCDlg::lines.size()*2/THREAD_NUMBER);
+		CDemo_ClipView_VCDlg::circles_to_draw[i].reserve(CDemo_ClipView_VCDlg::circles.size()*2/THREAD_NUMBER);
 	}
-	lines_drawing.reserve(lines.size()*2/THREAD_NUMBER);
-	circles_drawing.reserve(lines.size()*2/THREAD_NUMBER);
-	//ç»“æŸ ä¿ç•™è¶³å¤Ÿçš„ç©ºé—´ï¼Œä»¥å…ä¹‹åç©ºé—´ä¸å¤Ÿæ—¶å‘ç”Ÿå†…å­˜æ‹·è´
+	CDemo_ClipView_VCDlg::lines_drawing.reserve(CDemo_ClipView_VCDlg::lines.size()*2/THREAD_NUMBER);
+	CDemo_ClipView_VCDlg::circles_drawing.reserve(CDemo_ClipView_VCDlg::lines.size()*2/THREAD_NUMBER);
+	//½áÊø ±£Áô×ã¹»µÄ¿Õ¼ä£¬ÒÔÃâÖ®ºó¿Õ¼ä²»¹»Ê±·¢ÉúÄÚ´æ¿½±´
 
-	//å¼€å§‹ åˆå§‹åŒ–ä¸´ç•Œèµ„æº
+	//¿ªÊ¼ ³õÊ¼»¯ÁÙ½ç×ÊÔ´
 	for (int i=0;i<THREAD_NUMBER;i++)
-		InitializeCriticalSection(&critical_sections[i]);
-		InitializeCriticalSection(&critical_circle_number[0]);
-		InitializeCriticalSection(&critical_circle_number[1]);
-	//ç»“æŸ åˆå§‹åŒ–ä¸´ç•Œèµ„æº
+		omp_init_lock(&critical_sections[i]);
+	for (int i=0;i<2;i++)
+		omp_init_lock(&critical_circle_number[i]);
+	for (int i=0;i<3;i++)
+		omp_init_lock(&critical_line_number[i]);
+
+	//½áÊø ³õÊ¼»¯ÁÙ½ç×ÊÔ´
 
 	CClientDC dc(this);
-	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));		//å¡«å……æ•´ä¸ªç”»å¸ƒä¸ºé»‘è‰²
+	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));		//Ìî³äÕû¸ö»­²¼ÎªºÚÉ«
 
-	COLORREF clrBoundary = RGB(255,0,0);								//è¾¹ç•Œçš„é¢œè‰²ä¸ºçº¢è‰²
-	COLORREF clrLine = RGB(0,255,0);									//çº¿çš„é¢œè‰²ä¸ºç»¿è‰²
-	COLORREF clrCircle = RGB(0,0,255);									//åœ†çš„é¢œè‰²ä¸ºè“è‰²
+	COLORREF clrBoundary = RGB(255,0,0);								//±ß½çµÄÑÕÉ«ÎªºìÉ«
+	COLORREF clrLine = RGB(0,255,0);									//ÏßµÄÑÕÉ«ÎªÂÌÉ«
+	COLORREF clrCircle = RGB(0,0,255);									//Ô²µÄÑÕÉ«ÎªÀ¶É«
 	
-	//å¼€å§‹ ä¸ºç”»çº¿å’Œç”»åœ†åˆ†åˆ«ç”Ÿæˆä¸€ä¸ªCpen
+	//¿ªÊ¼ Îª»­ÏßºÍ»­Ô²·Ö±ğÉú³ÉÒ»¸öCpen
 	CPen penLine,penCircle;												
 	penLine.CreatePen(PS_SOLID, 1, clrLine);
 	penCircle.CreatePen(PS_SOLID, 1, clrCircle);
-	//ç»“æŸ ä¸ºç”»çº¿å’Œç”»åœ†åˆ†åˆ«ç”Ÿæˆä¸€ä¸ªCpen
+	//½áÊø Îª»­ÏßºÍ»­Ô²·Ö±ğÉú³ÉÒ»¸öCpen
 
-	DrawBoundary(boundary, clrBoundary);								//ç”»å¤šè¾¹å½¢è¾¹ç•Œ
+	DrawBoundary(boundary, clrBoundary);								//»­¶à±ßĞÎ±ß½ç
 
 
-	HANDLE hThread[MAX_THREAD_NUMBER];									//ç”¨äºå­˜å‚¨çº¿ç¨‹å¥æŸ„
-	DWORD  dwThreadID[MAX_THREAD_NUMBER];								//ç”¨äºå­˜å‚¨çº¿ç¨‹çš„ID
-	_param* Info = new _param[MAX_THREAD_NUMBER];						//ä¼ é€’ç»™çº¿ç¨‹å¤„ç†å‡½æ•°çš„å‚æ•°
+	HANDLE hThread[MAX_THREAD_NUMBER];								//ÓÃÓÚ´æ´¢Ïß³Ì¾ä±ú
+	DWORD  dwThreadID[MAX_THREAD_NUMBER];								//ÓÃÓÚ´æ´¢Ïß³ÌµÄID
+	_param* Info = new _param[MAX_THREAD_NUMBER];						//´«µİ¸øÏß³Ì´¦Àíº¯ÊıµÄ²ÎÊı
 
-	int nThreadLines=(int)(lines.size()/THREAD_NUMBER);					//å‰n-1ä¸ªçº¿ç¨‹éœ€è¦å¤„ç†çš„çº¿çš„æ¡æ•°ï¼ˆçº¿ç¨‹æ•°ä¸ºnï¼‰
-	int nThreadCircles = (int)(circles.size()/THREAD_NUMBER);			//å‰n-1ä¸ªçº¿ç¨‹éœ€è¦å¤„ç†çš„åœ†çš„ä¸ªæ•°ï¼ˆçº¿ç¨‹æ•°ä¸ºnï¼‰
+	int nThreadLines=(int)(lines.size()/THREAD_NUMBER);					//Ç°n-1¸öÏß³ÌĞèÒª´¦ÀíµÄÏßµÄÌõÊı£¨Ïß³ÌÊıÎªn£©
+	int nThreadCircles = (int)(circles.size()/THREAD_NUMBER);			//Ç°n-1¸öÏß³ÌĞèÒª´¦ÀíµÄÔ²µÄ¸öÊı£¨Ïß³ÌÊıÎªn£©
 
-	//å¼€å§‹ ä¸ºæ¯ä¸ªçº¿ç¨‹åˆ†é…éœ€è¦å¤„ç†çš„çº¿å’Œåœ†
+	//¿ªÊ¼ ÎªÃ¿¸öÏß³Ì·ÖÅäĞèÒª´¦ÀíµÄÏßºÍÔ²
 	for(int i=0;i<THREAD_NUMBER;i++){
 		int upperNumber=(i+1)*nThreadLines;
 		if (i==THREAD_NUMBER-1)
-			upperNumber=lines.size();
+			upperNumber=CDemo_ClipView_VCDlg::lines.size();
 		for (int j = i*nThreadLines; j < upperNumber; j++)
-			Info[i].thread_lines.push_back(lines[j]);
+			Info[i].thread_lines.push_back(CDemo_ClipView_VCDlg::lines[j]);
 
 		upperNumber=(i+1)*nThreadCircles;
 		if (i==THREAD_NUMBER-1)
-			upperNumber=circles.size();
+			upperNumber=CDemo_ClipView_VCDlg::circles.size();
 		for (int j = i*nThreadCircles; j < upperNumber; j++)
-			Info[i].thread_circles.push_back(circles[j]);
+			Info[i].thread_circles.push_back(CDemo_ClipView_VCDlg::circles[j]);
 	
 		Info[i].i = i;
-		Info[i].boundary = boundary;
+		Info[i].boundary = CDemo_ClipView_VCDlg::boundary;
 	}
-	//ç»“æŸ ä¸ºæ¯ä¸ªçº¿ç¨‹åˆ†é…éœ€è¦å¤„ç†çš„çº¿å’Œåœ†
+	//½áÊø ÎªÃ¿¸öÏß³Ì·ÖÅäĞèÒª´¦ÀíµÄÏßºÍÔ²
 
 
-	//å¼€å§‹ å¯¹å¤šè¾¹å½¢è¾¹ç•Œçš„ä¿¡æ¯è¿›è¡Œé¢„å¤„ç†
+	//¿ªÊ¼ ¶Ô¶à±ßĞÎ±ß½çµÄĞÅÏ¢½øĞĞÔ¤´¦Àí
 	preprocessJudgeConvexPoint(convexPoint);
 	preprocessNormalVector(normalVector,convexPoint);
 	preprocessEdgeRect(boundary);
-	//ç»“æŸ å¯¹å¤šè¾¹å½¢è¾¹ç•Œçš„ä¿¡æ¯è¿›è¡Œé¢„å¤„ç†
+	//½áÊø ¶Ô¶à±ßĞÎ±ß½çµÄĞÅÏ¢½øĞĞÔ¤´¦Àí
 
 
-	startclock=clock();
-
-	HANDLE hMainThread=GetCurrentThread();
-
-	//å¼€å§‹ åˆ›å»ºå¤šçº¿ç¨‹è¿›è¡Œè®¡ç®—
+	//¿ªÊ¼ ´´½¨¶àÏß³Ì½øĞĞ¼ÆËã
 	for (int i = 0;i<THREAD_NUMBER;i++)
-	{
 		hThread[i] = CreateThread(NULL,0,ThreadProc2,&Info[i],0,&(dwThreadID[i]));
-	}
-	//ç»“æŸ åˆ›å»ºå¤šçº¿ç¨‹è¿›è¡Œè®¡ç®—
+	//½áÊø ´´½¨¶àÏß³Ì½øĞĞ¼ÆËã
 
-
-	//å¼€å§‹ å½“çº¿ç¨‹æ²¡æœ‰å…¨éƒ¨è¿”å›æ—¶å¯¹å·²ç»è®¡ç®—å®Œçš„çº¿å’Œåœ†è¿›è¡Œç»˜åˆ¶æ˜¾ç¤º
+	//¿ªÊ¼ µ±Ïß³ÌÃ»ÓĞÈ«²¿·µ»ØÊ±¶ÔÒÑ¾­¼ÆËãÍêµÄÏßºÍÔ²½øĞĞ»æÖÆÏÔÊ¾
 	while (WaitForMultipleObjects(THREAD_NUMBER,hThread,true,
-		THREAD_CHECK_INTERVAL)!=WAIT_OBJECT_0)								//è‹¥çº¿ç¨‹æ²¡æœ‰å®Œå…¨è¿”å›ï¼Œåˆ™å¾ªç¯ç»§ç»­
+		THREAD_CHECK_INTERVAL)!=WAIT_OBJECT_0)//ÈôÏß³ÌÃ»ÓĞÍêÈ«·µ»Ø£¬ÔòÑ­»·¼ÌĞø
 	{
-		if (!TEST_DRAW_ANSWER) continue;									//è‹¥ä¸ç”¨ç”»å›¾ï¼Œåˆ™é€€å‡ºæœ¬æ¬¡å¾ªç¯
+		if (!TEST_DRAW_ANSWER) continue;									//Èô²»ÓÃ»­Í¼£¬ÔòÍË³ö±¾´ÎÑ­»·
 
-		//å¼€å§‹ ç”»çº¿		
+		//¿ªÊ¼ »­Ïß		
 		dc.SelectObject(&penLine);
 		for (int i=0;i<THREAD_NUMBER;i++)
 		{			
-			if (lines_to_draw[i].size()>MINIMUM_DRAW_SIZE)					//æ£€æŸ¥æ˜¯å¦äº§ç”Ÿäº†å¾…ç»˜æ•°æ®ï¼Œæœ‰è¶³å¤Ÿå¤šçš„è¯å°±å¼€å§‹ç»˜å›¾ï¼Œä»¥èŠ‚çº¦æ—¶é—´
+			if (lines_to_draw[i].size()>MINIMUM_DRAW_SIZE)					//¼ì²éÊÇ·ñ²úÉúÁË´ı»æÊı¾İ£¬ÓĞ×ã¹»¶àµÄ»°¾Í¿ªÊ¼»æÍ¼£¬ÒÔ½ÚÔ¼Ê±¼ä
 			{
-				EnterCriticalSection(&critical_sections[i]);				//è¿›å…¥å¯¹ä¸´ç•Œèµ„æºlines_to_draw[i]è¿›è¡Œè®¿é—®
-				lines_drawing.swap(lines_to_draw[i]);						//äº¤æ¢ç»˜å›¾å®¹å™¨ï¼ˆäº¤æ¢æ—¶ä¸ºç©ºå®¹å™¨ï¼‰ä¸å¾…ç»˜å›¾å®¹å™¨
-				LeaveCriticalSection(&critical_sections[i]);				//ç¦»å¼€å¯¹ä¸´ç•Œèµ„æºlines_to_draw[i]è¿›è¡Œè®¿é—®
+				omp_set_lock(&critical_sections[i]);				//½øÈë¶ÔÁÙ½ç×ÊÔ´lines_to_draw[i]½øĞĞ·ÃÎÊ
+				lines_drawing.swap(lines_to_draw[i]);						//½»»»»æÍ¼ÈİÆ÷£¨½»»»Ê±Îª¿ÕÈİÆ÷£©Óë´ı»æÍ¼ÈİÆ÷
+				omp_unset_lock(&critical_sections[i]);				//Àë¿ª¶ÔÁÙ½ç×ÊÔ´lines_to_draw[i]½øĞĞ·ÃÎÊ
 
-				//å¼€å§‹ å¯¹ç¬¬kçº¿ç¨‹äº¤æ¢å‡ºæ¥çš„çº¿è¿›è¡Œç»˜åˆ¶
+				//¿ªÊ¼ ¶ÔµÚkÏß³Ì½»»»³öÀ´µÄÏß½øĞĞ»æÖÆ
 				for (vector<Line>::iterator iter=lines_drawing.begin();
 					iter!=lines_drawing.end(); iter++)
 				{
 					dc.MoveTo((*iter).startpoint);
 					dc.LineTo((*iter).endpoint);
 				}
-				//ç»“æŸ å¯¹ç¬¬kçº¿ç¨‹äº¤æ¢å‡ºæ¥çš„çº¿è¿›è¡Œç»˜åˆ¶
-				lines_drawing.clear();										//æ¸…ç©ºç»˜å›¾å®¹å™¨
+				//½áÊø ¶ÔµÚkÏß³Ì½»»»³öÀ´µÄÏß½øĞĞ»æÖÆ
+				lines_drawing.clear();										//Çå¿Õ»æÍ¼ÈİÆ÷
 			}
 		}
-		//ç»“æŸ ç”»çº¿
+		//½áÊø »­Ïß
 
-		//å¼€å§‹ ç”»åœ†
+		//¿ªÊ¼ »­Ô²
 		dc.SelectObject(&penCircle);
 		for (int i=0;i<THREAD_NUMBER;i++)
 		{
-			if (circles_to_draw[i].size()>MINIMUM_DRAW_SIZE)				//æ£€æŸ¥æ˜¯å¦äº§ç”Ÿäº†å¾…ç»˜æ•°æ®ï¼Œæœ‰è¶³å¤Ÿå¤šçš„è¯å°±å¼€å§‹ç»˜å›¾ï¼Œä»¥èŠ‚çº¦æ—¶é—´
+			if (circles_to_draw[i].size()>MINIMUM_DRAW_SIZE)				//¼ì²éÊÇ·ñ²úÉúÁË´ı»æÊı¾İ£¬ÓĞ×ã¹»¶àµÄ»°¾Í¿ªÊ¼»æÍ¼£¬ÒÔ½ÚÔ¼Ê±¼ä
 			{
-				EnterCriticalSection(&critical_sections[i]);				//è¿›å…¥å¯¹ä¸´ç•Œèµ„æºcritical_sections[i]è¿›è¡Œè®¿é—®
-				circles_drawing.swap(circles_to_draw[i]);					//äº¤æ¢ç»˜å›¾å®¹å™¨ï¼ˆäº¤æ¢æ—¶ä¸ºç©ºå®¹å™¨ï¼‰ä¸å¾…ç»˜å›¾å®¹å™¨
-				LeaveCriticalSection(&critical_sections[i]);				//ç¦»å¼€å¯¹ä¸´ç•Œèµ„æºcritical_sections[i]è¿›è¡Œè®¿é—®
+				omp_set_lock(&critical_sections[i]);				//½øÈë¶ÔÁÙ½ç×ÊÔ´critical_sections[i]½øĞĞ·ÃÎÊ
+				circles_drawing.swap(circles_to_draw[i]);					//½»»»»æÍ¼ÈİÆ÷£¨½»»»Ê±Îª¿ÕÈİÆ÷£©Óë´ı»æÍ¼ÈİÆ÷
+				omp_unset_lock(&critical_sections[i]);				//Àë¿ª¶ÔÁÙ½ç×ÊÔ´critical_sections[i]½øĞĞ·ÃÎÊ
 
-				//å¼€å§‹ å¯¹ç¬¬kçº¿ç¨‹äº¤æ¢å‡ºæ¥çš„åœ†è¿›è¡Œç»˜åˆ¶
-				for (vector<_arc2draw>::iterator iter= 
-					circles_drawing.begin();iter!= circles_drawing.end();
-					iter++)
-				{
-					dc.Arc(&((*iter).rect),(*iter).start_point,
-						(*iter).end_point);
-				}
-				//ç»“æŸ å¯¹ç¬¬kçº¿ç¨‹äº¤æ¢å‡ºæ¥çš„åœ†è¿›è¡Œç»˜åˆ¶
-				circles_drawing.clear();									//æ¸…ç©ºç»˜å›¾å®¹å™¨
+				//¿ªÊ¼ ¶ÔµÚkÏß³Ì½»»»³öÀ´µÄÔ²½øĞĞ»æÖÆ
+				for (vector<_arc2draw>::iterator iter=circles_drawing.begin();iter!= circles_drawing.end();iter++)
+					dc.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
+				//½áÊø ¶ÔµÚkÏß³Ì½»»»³öÀ´µÄÔ²½øĞĞ»æÖÆ
+				circles_drawing.clear();									//Çå¿Õ»æÍ¼ÈİÆ÷
 			}
 		}
-		//ç»“æŸ ç”»åœ†
+		//½áÊø »­Ô²
+
 	}
-	//ç»“æŸ å½“çº¿ç¨‹æ²¡æœ‰å…¨éƒ¨è¿”å›æ—¶å¯¹å·²ç»è®¡ç®—å®Œçš„çº¿å’Œåœ†è¿›è¡Œç»˜åˆ¶æ˜¾ç¤º
+	//½áÊø µ±Ïß³ÌÃ»ÓĞÈ«²¿·µ»ØÊ±¶ÔÒÑ¾­¼ÆËãÍêµÄÏßºÍÔ²½øĞĞ»æÖÆÏÔÊ¾
 
 
-
-	//å¼€å§‹ ç”»å‰©ä¸‹çš„çº¿å’Œåœ†å¼§
+	//¿ªÊ¼ »­Ê£ÏÂµÄÏßºÍÔ²»¡
 	if (TEST_DRAW_ANSWER)
 	{
 		dc.SelectObject(&penLine);
@@ -388,31 +384,39 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 			for (vector<_arc2draw>::iterator iter= circles_to_draw[i].begin();iter!= circles_to_draw[i].end(); iter++)
 				dc.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
 	}
-	//ç»“æŸ ç”»å‰©ä¸‹çš„çº¿å’Œåœ†å¼§
+	//½áÊø »­Ê£ÏÂµÄÏßºÍÔ²»¡
 
-	//å¼€å§‹ è®¡ç®—åœ†åœ¨å¤šè¾¹å½¢å¤–éƒ¨çš„æƒ…å†µ
-	int circle_out_boun = circles_num-circle_inter_boun-circle_in_boun;
-	//ç»“æŸ è®¡ç®—åœ†åœ¨å¤šè¾¹å½¢å¤–éƒ¨çš„æƒ…å†µ
+
+	//¿ªÊ¼ ¼ÆËãÒ»Ğ©Êı¾İ
+	int circle_out_bound = circles_num-circle_inter_bound-circle_in_bound;
+	int line_inter_bound = lines_num-line_in_bound-line_out_bound-line_overlap_bound;
+	//½áÊø ¼ÆËãÒ»Ğ©Êı¾İ
 	
-	//å¼€å§‹ è¾“å‡ºå›¾å½¢å¤æ‚ç¨‹åº¦
-	CString text;
-	text.Format("å…±æœ‰%dæ¡çº¿ï¼Œ%dä¸ªåœ†å’Œ%dä¸ªè¾¹ç•Œï¼Œå…¶ä¸­%dä¸ªå›¾å½¢åœ¨å¤šè¾¹å½¢å†…éƒ¨ï¼Œ%dä¸ªå›¾å½¢åœ¨å¤šè¾¹å½¢å¤–éƒ¨ã€‚å…±æœ‰%dä¸ªå›¾å½¢å’Œå¤šè¾¹å½¢ç›¸äº¤ï¼Œdä¸ªå›¾å½¢å’Œå¤šè¾¹å½¢é‡åˆ",lines_num,circles_num,boundarys_num,circle_in_boun,circle_out_boun,circle_inter_boun);
-	m_stc_info2.SetWindowText(text);
-	//ç»“æŸ è¾“å‡ºå›¾å½¢å¤æ‚ç¨‹åº¦
 
-	//å¼€å§‹ é‡Šæ”¾ä¸´ç•Œèµ„æºå’Œå †ç©ºé—´
+	//¿ªÊ¼ Êä³öÍ¼ĞÎ¸´ÔÓ³Ì¶È
+	CString text;
+	text.Format("¹²ÓĞ%dÌõÏß£¬%d¸öÔ²ºÍ%d¸ö±ß½ç£¬ÆäÖĞ%d¸öÍ¼ĞÎÔÚ¶à±ßĞÎÄÚ²¿£¬%d¸öÍ¼ĞÎÔÚ¶à±ßĞÎÍâ²¿¡£¹²ÓĞ%d¸öÍ¼ĞÎºÍ¶à±ßĞÎÏà½»£¬%d¸öÍ¼ĞÎºÍ¶à±ßĞÎÖØºÏ",lines_num,circles_num,boundarys_num,line_in_bound+circle_in_bound,line_out_bound+circle_out_bound,line_inter_bound+circle_inter_bound,line_overlap_bound);
+	m_stc_info2.SetWindowText(text);
+	//½áÊø Êä³öÍ¼ĞÎ¸´ÔÓ³Ì¶È
+
+
+	//¿ªÊ¼ ÊÍ·ÅÁÙ½ç×ÊÔ´ºÍ¶Ñ¿Õ¼ä
 	for (int i=0;i<THREAD_NUMBER;i++)
 	{
-		DeleteCriticalSection(&critical_sections[i]);
+		omp_destroy_lock(&critical_sections[i]);
 		vector<Line>().swap(lines_to_draw[i]);
 		vector<_arc2draw>().swap(circles_to_draw[i]);
 	}
 	
+	for (int i=0;i<3;i++)
+		omp_destroy_lock(&critical_line_number[i]);
+	for (int i=0;i<2;i++)
+		omp_destroy_lock(&critical_circle_number[i]);
+
 	vector<Line>().swap(lines_drawing);
 	vector<_arc2draw>().swap(circles_drawing);
 	vector<Line>().swap(lines);
 	vector<Circle>().swap(circles);
-	vector<ThreadTime>().swap(thread_use_time);
 	vector<BOOL>().swap(convexPoint);
 	vector<RECT>().swap(edgeRect);
 	vector<Vector>().swap(normalVector);
@@ -428,34 +432,25 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	penLine.DeleteObject();
 	penCircle.DeleteObject();
 
-	//ç»“æŸ é‡Šæ”¾ä¸´ç•Œèµ„æºå’Œå †ç©ºé—´
-
-
+	//½áÊø ÊÍ·ÅÁÙ½ç×ÊÔ´ºÍ¶Ñ¿Õ¼ä
 	
-	_CrtDumpMemoryLeaks();										//è¾“å‡ºæ³„æ¼ä¿¡æ¯
+	_CrtDumpMemoryLeaks();										//Êä³öĞ¹Â©ĞÅÏ¢
 	
 	
 	EndMonitor();
 }
 
 /*
-*åŠŸèƒ½ï¼šå¯¹éƒ¨åˆ†çº¿å’Œåœ†è¿›è¡Œæ±‚äº¤è®¡ç®—çš„çº¿ç¨‹å‡½æ•°
-*å‚æ•°ï¼šä¼ é€’ç»™æ¯ä¸ªçº¿ç¨‹çš„å¾…å¤„ç†çš„çº¿å’Œåœ†çš„å®¹å™¨
-*æ€è·¯ï¼šå¯¹ä¼ é€’è¿‡æ¥çš„åœ†å’Œå…ˆåˆ†åˆ«è·Ÿå¤šè¾¹å½¢çª—å£è¿›è¡Œæ±‚äº¤ï¼Œ
-*	   è·å¾—éœ€è¦ç»˜åˆ¶çš„çº¿æ®µå’Œå¼§çº¿ï¼Œå¹¶å­˜å…¥ä¸€ä¸ªå¾…ç»˜åˆ¶çš„å®¹å™¨ä¸­
+*¹¦ÄÜ£º¶Ô²¿·ÖÏßºÍÔ²½øĞĞÇó½»¼ÆËãµÄÏß³Ìº¯Êı
+*²ÎÊı£º´«µİ¸øÃ¿¸öÏß³ÌµÄ´ı´¦ÀíµÄÏßºÍÔ²µÄÈİÆ÷
+*Ë¼Â·£º¶Ô´«µİ¹ıÀ´µÄÔ²ºÍÏÈ·Ö±ğ¸ú¶à±ßĞÎ´°¿Ú½øĞĞÇó½»£¬
+*	   »ñµÃĞèÒª»æÖÆµÄÏß¶ÎºÍ»¡Ïß£¬²¢´æÈëÒ»¸ö´ı»æÖÆµÄÈİÆ÷ÖĞ
 */
 DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc2(LPVOID lpParam)  
 {  
 	_param  * Info = ( _param *)lpParam; 
 
-	double starttime=clock();
-
-	ThreadTime a;
-	a.i=Info->i;
-	a.time=1.0*(starttime-startclock)/CLOCKS_PER_SEC;
-	thread_use_time.push_back(a);
-	
-	//å¼€å§‹ è¿›è¡Œçº¿çš„è£å‰ª
+	//¿ªÊ¼ ½øĞĞÏßµÄ²Ã¼ô
 	if (TEST_LINES)                                                       
 	{
 		if (isConvexPoly)
@@ -463,33 +458,32 @@ DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc2(LPVOID lpParam)
 		else
 			dealConcave(Info->thread_lines,Info->boundary,Info->i);
 
-
 	}
-	//ç»“æŸ è¿›è¡Œçº¿çš„è£å‰ª
+	//½áÊø ½øĞĞÏßµÄ²Ã¼ô
 
-	//å¼€å§‹ è¿›è¡Œåœ†çš„è£å‰ª
+	//¿ªÊ¼ ½øĞĞÔ²µÄ²Ã¼ô
 	if (TEST_CIRCLES)
 		forCircleRun(Info->thread_circles,Info->boundary,Info->i);
-	//ç»“æŸ è¿›è¡Œåœ†çš„è£å‰ª
+	//½áÊø ½øĞĞÔ²µÄ²Ã¼ô
 
-	double endtime=clock();
-	a.i=Info->i;
-	a.time=1.0*(endtime-startclock)/CLOCKS_PER_SEC;
-	thread_use_time.push_back(a);
-
-	return 0;                                                             //çº¿ç¨‹è¿”å›
+	return 0;                                                             //Ïß³Ì·µ»Ø
 }
 
-/*----------------------------------------------- å‡¸å¤šè¾¹å½¢çº¿è£å‰ªç®—æ³• starts--------------------------------------------------------*/
+
+
+
+
+
+/*----------------------------------------------- Í¹¶à±ßĞÎÏß²Ã¼ôËã·¨ starts--------------------------------------------------------*/
 
 /*
-*åŠŸèƒ½ï¼šåˆ¤æ–­çº¿æ®µæ˜¯å¦åœ¨åŒ…å›´ç›’é‡Œï¼Œè‹¥åœ¨åŒ…å›´ç›’é‡Œåˆ™è¿”å›trueï¼Œå¦åˆ™è¿”å›false
-*å‚æ•°ï¼šboundaryä¸ºè£å‰ªè¾¹ç•Œ  lineä¸ºæ‰€åˆ¤æ–­çš„çº¿æ®µ
-*æ€è·¯ï¼šéå†å¤šè¾¹å½¢çš„é¡¶ç‚¹ï¼Œä»¥æœ€å°çš„x,yå’Œæœ€å¤§çš„x,yå€¼åˆ†åˆ«ä¸ºåŒ…å›´ç›’çš„å¯¹è§’çº¿ç«¯ç‚¹
+*¹¦ÄÜ£ºÅĞ¶ÏÏß¶ÎÊÇ·ñÔÚ°üÎ§ºĞÀï£¬ÈôÔÚ°üÎ§ºĞÀïÔò·µ»Øtrue£¬·ñÔò·µ»Øfalse
+*²ÎÊı£ºboundaryÎª²Ã¼ô±ß½ç  lineÎªËùÅĞ¶ÏµÄÏß¶Î
+*Ë¼Â·£º±éÀú¶à±ßĞÎµÄ¶¥µã£¬ÒÔ×îĞ¡µÄx,yºÍ×î´óµÄx,yÖµ·Ö±ğÎª°üÎ§ºĞµÄ¶Ô½ÇÏß¶Ëµã
 */
-bool InBox(Line& line){
+bool CDemo_ClipView_VCDlg::InBox(Line& line){
 	bool isVisible=true;
-	int xl=INTIALIZE,xr=-INTIALIZE,yt=-INTIALIZE,yb=INTIALIZE;					//å¯¹åŒ…å›´ç›’çš„è¾¹ç•Œå€¼è¿›è¡Œåˆå§‹åŒ–
+	int xl=INTIALIZE,xr=-INTIALIZE,yt=-INTIALIZE,yb=INTIALIZE;					//¶Ô°üÎ§ºĞµÄ±ß½çÖµ½øĞĞ³õÊ¼»¯
 	int n=boundary.vertexs.size();
 	for(int i=0;i<n-1;i++){
 		if(boundary.vertexs[i].x<=xl) xl=boundary.vertexs[i].x;
@@ -504,24 +498,23 @@ bool InBox(Line& line){
 	else return true;
 }
 
-
 /*
-*åŠŸèƒ½ï¼šè¿‡ç‚¹(x1,y1)(x2,y2)ä¸€èˆ¬å¼ç›´çº¿æ–¹ç¨‹ä¸º(y2-y1)x+(x1-x2)y+x2y1-x1y2=0ï¼Œ
-*      æ ¹æ®ä¸Šè¿°å¤šé¡¹å¼åˆ¤æ–­(x,y)ä¸(x1,y1)(x,2,y2)çº¿æ®µçš„ä½ç½®,è¿”å›å¤šé¡¹å¼å€¼
-*å‚æ•°ï¼š(x1,y1),(x2,y2)ä¸ºè¯¥çº¿æ®µä¸¤ç«¯ç«¯ç‚¹çš„åæ ‡å€¼  (x,yï¼‰ä¸ºæ‰€åˆ¤æ–­çš„ç‚¹çš„åæ ‡å€¼
-*æ€è·¯ï¼šå°†è¢«åˆ¤æ–­çš„ç‚¹çš„åæ ‡ä»£å…¥å¤šé¡¹å¼ä¸­ï¼Œå¾—çŸ¥å…¶æ­£è´Ÿå·
+*¹¦ÄÜ£º¹ıµã(x1,y1)(x2,y2)Ò»°ãÊ½Ö±Ïß·½³ÌÎª(y2-y1)x+(x1-x2)y+x2y1-x1y2=0£¬
+*      ¸ù¾İÉÏÊö¶àÏîÊ½ÅĞ¶Ï(x,y)Óë(x1,y1)(x,2,y2)Ïß¶ÎµÄÎ»ÖÃ,·µ»Ø¶àÏîÊ½Öµ
+*²ÎÊı£º(x1,y1),(x2,y2)Îª¸ÃÏß¶ÎÁ½¶Ë¶ËµãµÄ×ø±êÖµ  (x,y£©ÎªËùÅĞ¶ÏµÄµãµÄ×ø±êÖµ
+*Ë¼Â·£º½«±»ÅĞ¶ÏµÄµãµÄ×ø±ê´úÈë¶àÏîÊ½ÖĞ£¬µÃÖªÆäÕı¸ººÅ
 */
-int Multinomial(int x1,int y1,int x2,int y2,int x,int y){
+int CDemo_ClipView_VCDlg::Multinomial(int x1,int y1,int x2,int y2,int x,int y){
 	int result=(y2-y1)*x+(x1-x2)*y+x2*y1-x1*y2;
 	return result;
 }
 
 
 /*
-*åŠŸèƒ½ï¼šè¿”å›line1,line2ä¸¤æ¡ç›´çº¿çš„äº¤ç‚¹
-*æ€è·¯ï¼šæ ¹æ®ç›´çº¿çš„ä¸€èˆ¬å¼æ–¹ç¨‹ï¼Œæ±‚ç›´çº¿ç›´æ¥çš„äº¤ç‚¹
+*¹¦ÄÜ£º·µ»Øline1,line2Á½ÌõÖ±ÏßµÄ½»µã
+*Ë¼Â·£º¸ù¾İÖ±ÏßµÄÒ»°ãÊ½·½³Ì£¬ÇóÖ±ÏßÖ±½ÓµÄ½»µã
 */
-CPoint CrossPoint(Line& line1,Line& line2){
+CPoint CDemo_ClipView_VCDlg::CrossPoint(Line& line1,Line& line2){
 	CPoint CrossP;
 	int a1 = line1.endpoint.y-line1.startpoint.y;
 	int b1 = line1.startpoint.x-line1.endpoint.x;
@@ -552,11 +545,11 @@ CPoint CrossPoint(Line& line1,Line& line2){
 
 
 /*
-*åŠŸèƒ½ï¼šåˆ¤æ–­ç‚¹ptæ˜¯å¦åœ¨çº¿lineä¸Šï¼Œè‹¥åœ¨çº¿ä¸Šåˆ™è¿”å›trueï¼Œå¦åˆ™è¿”å›false
-*æ€è·¯ï¼šå°†è¯¥ç›´çº¿çš„ä¸¤ä¸ªç«¯ç‚¹å’Œè¢«åˆ¤æ–­çš„ç«¯ç‚¹ä¼ å…¥Multinomial()å‡½æ•°ä¸­ï¼Œ
-*      è‹¥æ­¤å¤šé¡¹å¼å€¼ä¸º0åˆ™è¯´æ˜ç‚¹åœ¨çº¿æ®µä¸Š
+*¹¦ÄÜ£ºÅĞ¶ÏµãptÊÇ·ñÔÚÏßlineÉÏ£¬ÈôÔÚÏßÉÏÔò·µ»Øtrue£¬·ñÔò·µ»Øfalse
+*Ë¼Â·£º½«¸ÃÖ±ÏßµÄÁ½¸ö¶ËµãºÍ±»ÅĞ¶ÏµÄ¶Ëµã´«ÈëMultinomial()º¯ÊıÖĞ£¬
+*      Èô´Ë¶àÏîÊ½ÖµÎª0ÔòËµÃ÷µãÔÚÏß¶ÎÉÏ
 */
-bool IsOnline(CPoint& pt,Line& line){
+bool CDemo_ClipView_VCDlg::IsOnline(CPoint& pt,Line& line){
 	if(Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt.x,pt.y)==0)
 		return 1;
 	else 
@@ -565,12 +558,12 @@ bool IsOnline(CPoint& pt,Line& line){
 
 
 /*
-*åŠŸèƒ½ï¼šåˆ¤æ–­ç”±pt1,pt2ä¸¤ä¸ªç«¯ç‚¹æ‰€åœ¨çº¿æ®µä¸çº¿æ®µlineæ˜¯å¦ç›¸äº¤ï¼Œ
-*      è‹¥ç›¸äº¤åˆ™è¿”å›trueï¼Œå¦åˆ™è¿”å›false
-*æ€è·¯ï¼šåˆ†åˆ«å°†pt1,lineçš„ä¸¤ä¸ªç«¯ç‚¹å’Œpt2ï¼Œlineçš„ä¸¤ä¸ªç«¯ç‚¹ä¼ å…¥Multinomial()å‡½æ•°ä¸­ï¼Œ
-*      è‹¥è¿”å›çš„ä¸¤ä¸ªå¤šé¡¹å¼å€¼å¼‚å·åˆ™è¯´æ˜pt1,pt2æ‰€åœ¨çº¿æ®µå’Œlineç›¸äº¤
+*¹¦ÄÜ£ºÅĞ¶ÏÓÉpt1,pt2Á½¸ö¶ËµãËùÔÚÏß¶ÎÓëÏß¶ÎlineÊÇ·ñÏà½»£¬
+*      ÈôÏà½»Ôò·µ»Øtrue£¬·ñÔò·µ»Øfalse
+*Ë¼Â·£º·Ö±ğ½«pt1,lineµÄÁ½¸ö¶ËµãºÍpt2£¬lineµÄÁ½¸ö¶Ëµã´«ÈëMultinomial()º¯ÊıÖĞ£¬
+*      Èô·µ»ØµÄÁ½¸ö¶àÏîÊ½ÖµÒìºÅÔòËµÃ÷pt1,pt2ËùÔÚÏß¶ÎºÍlineÏà½»
 */
-bool Intersect(CPoint& pt1,CPoint& pt2,Line& line){
+bool CDemo_ClipView_VCDlg::Intersect(CPoint& pt1,CPoint& pt2,Line& line){
 	int a1=Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt1.x,pt1.y);
 	int a2=Multinomial(line.startpoint.x,line.startpoint.y,line.endpoint.x,line.endpoint.y,pt2.x,pt2.y);
 	if((a1<0&&a2>0)||(a1>0&&a2<0))
@@ -581,28 +574,28 @@ bool Intersect(CPoint& pt1,CPoint& pt2,Line& line){
 
 
 /*
-*åŠŸèƒ½ï¼šä¼ å…¥è£å‰ªè¾¹ç•Œboundaryå’Œè¢«è£å‰ªçº¿æ®µline.è¿”å›è£å‰ªåæ‰€æ˜¾ç¤ºçº¿æ®µ
-*æ€è·¯ï¼šæ ¹æ®ç‚¹ä¸å¤šè¾¹å½¢çš„ä½ç½®ï¼Œè®¡ç®—å‡ºéœ€è¦æ˜¾ç¤ºçº¿æ®µçš„ç«¯ç‚¹ï¼Œå¾—å‡ºæ˜¾ç¤ºçº¿æ®µ
+*¹¦ÄÜ£º´«Èë²Ã¼ô±ß½çboundaryºÍ±»²Ã¼ôÏß¶Îline.·µ»Ø²Ã¼ôºóËùÏÔÊ¾Ïß¶Î
+*Ë¼Â·£º¸ù¾İµãÓë¶à±ßĞÎµÄÎ»ÖÃ£¬¼ÆËã³öĞèÒªÏÔÊ¾Ïß¶ÎµÄ¶Ëµã£¬µÃ³öÏÔÊ¾Ïß¶Î
 */
-Line result(Line& line){
+Line CDemo_ClipView_VCDlg::result(Line& line){
 	Line line_result;
 	line_result.startpoint.x=line_result.startpoint.y=INTIALIZE;
 	line_result.endpoint.x=line_result.endpoint.y=INTIALIZE;
 
-	bool bspt=isPointInBoundary(line.startpoint);								//startpointæ˜¯å¦åœ¨å¤šè¾¹å½¢å†…ï¼Œè‹¥æ˜¯è¿”å›å€¼ä¸ºtrue
+	bool bspt=isPointInBoundary(line.startpoint);								//startpointÊÇ·ñÔÚ¶à±ßĞÎÄÚ£¬ÈôÊÇ·µ»ØÖµÎªtrue
 
-	bool bept=isPointInBoundary(line.endpoint);									//endpointæ˜¯å¦åœ¨å¤šè¾¹å½¢å†…ï¼Œè‹¥æ˜¯è¿”å›å€¼ä¸ºtrue
+	bool bept=isPointInBoundary(line.endpoint);									//endpointÊÇ·ñÔÚ¶à±ßĞÎÄÚ£¬ÈôÊÇ·µ»ØÖµÎªtrue
 	
-	if(bspt&&bept)																//è‹¥ä¸¤ç‚¹éƒ½åœ¨å¤šè¾¹å½¢å†…åˆ™ç»˜åˆ¶è¯¥ç›´çº¿
+	if(bspt&&bept)																//ÈôÁ½µã¶¼ÔÚ¶à±ßĞÎÄÚÔò»æÖÆ¸ÃÖ±Ïß
 		return line; 
 	
-	else if((bspt&&(!bept))||((!bspt)&&bept)){									//è‹¥startpointåœ¨å¤šè¾¹å½¢å†…ï¼Œä½†endpointåœ¨å¤šè¾¹å½¢å¤–
+	else if((bspt&&(!bept))||((!bspt)&&bept)){									//ÈôstartpointÔÚ¶à±ßĞÎÄÚ£¬µ«endpointÔÚ¶à±ßĞÎÍâ
 		if(bspt&&(!bept))
 			line_result.startpoint=line.startpoint;
 		else if((!bspt)&&bept)
 			line_result.startpoint=line.endpoint;
 
-		//å¼€å§‹ æ±‚äº¤ç‚¹
+		//¿ªÊ¼ Çó½»µã
 		int n=boundary.vertexs.size();
 		int i=0;
 		while(i<n-1){
@@ -610,7 +603,7 @@ Line result(Line& line){
 			side.startpoint=boundary.vertexs[i];
 			side.endpoint=boundary.vertexs[(i+1)%n];
 			
-			if(Intersect(side.startpoint,side.endpoint,line)){					//è¿‡ç‚¹(x1,y1)(x2,y2)ä¸€èˆ¬å¼ç›´çº¿æ–¹ç¨‹ 
+			if(Intersect(side.startpoint,side.endpoint,line)){					//¹ıµã(x1,y1)(x2,y2)Ò»°ãÊ½Ö±Ïß·½³Ì 
 																				//(y2-y1)x+(x1-x2)y+x2y1-x1y2=0
 				CPoint p=CrossPoint(line,side);
 				if(p.x<=max(line.startpoint.x,line.endpoint.x)&&
@@ -624,12 +617,12 @@ Line result(Line& line){
 			}
 			else i++;
 		}
-		//ç»“æŸ æ±‚äº¤ç‚¹
+		//½áÊø Çó½»µã
 
-		return line_result;														//ç»˜åˆ¶äº¤ç‚¹åˆ°startpointçš„ç›´çº¿
+		return line_result;														//»æÖÆ½»µãµ½startpointµÄÖ±Ïß
 	}
 
-	else if((!bspt)&&(!bept)){												    //è‹¥startpointå’Œendpointå‡åœ¨å¤šè¾¹å½¢å¤–
+	else if((!bspt)&&(!bept)){												    //ÈôstartpointºÍendpoint¾ùÔÚ¶à±ßĞÎÍâ
 		int n=boundary.vertexs.size();
 		int i=0,nCrossPoint=0;
 		while(i<(n-1)&&nCrossPoint!=2){
@@ -668,13 +661,59 @@ Line result(Line& line){
 }
 
 
-void dealConvex(vector<Line>& lines,Boundary& boundary,int threadNumber)
+void CDemo_ClipView_VCDlg::dealConvex(vector<Line>& lines,Boundary& boundary,int threadNumber)
 {
-	//å¼€å§‹ å¤„ç†å‡¸å¤šè¾¹å½¢çª—å£
+	//¿ªÊ¼ ´¦ÀíÍ¹¶à±ßĞÎ´°¿Ú
 	for(int i=0;i<lines.size();i++){
+		bool overlap=isOverlap(lines[i]);
+		if (overlap)
+		{
+				omp_set_lock(&critical_line_number[2]); 
+				line_overlap_bound++;
+				omp_unset_lock(&critical_line_number[2]); 
+		}
+		int size=boundary.vertexs.size()-1;
+		bool haveIntersect=false;
+		for (int ii=0;ii<size;ii++)
+		{
+			CPoint p1=boundary.vertexs[ii];
+		    CPoint p2=boundary.vertexs[ii+1];
+			if(Intersect(p1,p2,lines[i])){
+				haveIntersect=true;
+				break;
+			}
+		}
 		
-		if(InBox(lines[i])){													//å…ˆåˆ¤æ–­çº¿æ®µæ˜¯å¦åœ¨åŒ…å›´ç›’å†…ï¼Œè‹¥æ˜æ˜¾ä¸åœ¨åˆ™ä¸æ˜¾ç¤ºè¯¥çº¿æ®µï¼Œ
-																				//å¦åˆ™ç»§ç»­ä»¥ä¸‹æ­¥éª¤
+		//¿ªÊ¼ Ã»ÓĞ½»µãµÄÇé¿ö
+		if (!haveIntersect)
+		{
+			if (isPointInBoundary(lines[i].startpoint))							//Èç¹ûÔÚ¶à±ßĞÎÄÚ
+			{
+				Line l=lines[i];
+				omp_set_lock(&critical_sections[threadNumber]); 
+				lines_to_draw[threadNumber].push_back(lines[i]);
+				omp_unset_lock(&critical_sections[threadNumber]);				
+				
+				if (!overlap)
+				{
+					omp_set_lock(&critical_line_number[0]); 
+					line_in_bound++;
+					omp_unset_lock(&critical_line_number[0]); 
+				}
+			}
+			else if (!overlap)
+
+			{
+				omp_set_lock(&critical_line_number[1]); 
+				line_out_bound++;
+				omp_unset_lock(&critical_line_number[1]); 
+			}
+			continue;
+		}
+		//½áÊø Ã»ÓĞ½»µãµÄÇé¿ö
+
+		if(InBox(lines[i])){													//ÏÈÅĞ¶ÏÏß¶ÎÊÇ·ñÔÚ°üÎ§ºĞÄÚ£¬ÈôÃ÷ÏÔ²»ÔÚÔò²»ÏÔÊ¾¸ÃÏß¶Î£¬
+																				//·ñÔò¼ÌĞøÒÔÏÂ²½Öè
 			Line line=result(lines[i]);
 			if(line.startpoint.x!=INTIALIZE &&
 				line.startpoint.y!=INTIALIZE &&
@@ -683,22 +722,22 @@ void dealConvex(vector<Line>& lines,Boundary& boundary,int threadNumber)
 				lines_to_draw[threadNumber].push_back(line);
 		}
 	}
-	//ç»“æŸ å¤„ç†å‡¸å¤šè¾¹å½¢çª—å£
+	//½áÊø ´¦ÀíÍ¹¶à±ßĞÎ´°¿Ú
 }
 
-/*----------------------------------------------- å‡¸å¤šè¾¹å½¢çº¿è£å‰ªç®—æ³• ends----------------------------------------------------------*/
+/*----------------------------------------------- Í¹¶à±ßĞÎÏß²Ã¼ôËã·¨ ends----------------------------------------------------------*/
 
 
 
 
 
-/*----------------------------------------------- ä»»æ„å¤šè¾¹å½¢çº¿è£å‰ªç®—æ³• starts------------------------------------------------------*/
+/*----------------------------------------------- ÈÎÒâ¶à±ßĞÎÏß²Ã¼ôËã·¨ starts------------------------------------------------------*/
 
 /*
-*åŠŸèƒ½ï¼šè®¡ç®—ä¸¤ä¸ªå‘é‡çš„å‰ç§¯
-*å‚æ•°ï¼ša1,a2ä¸ºç¬¬ä¸€ä¸ªå‘é‡çš„èµ·ç‚¹ä¸ç»ˆç‚¹ï¼Œb1,b2ä¸ºç¬¬äºŒä¸ªå‘é‡çš„èµ·ç‚¹ä¸ç»ˆç‚¹
+*¹¦ÄÜ£º¼ÆËãÁ½¸öÏòÁ¿µÄ²æ»ı
+*²ÎÊı£ºa1,a2ÎªµÚÒ»¸öÏòÁ¿µÄÆğµãÓëÖÕµã£¬b1,b2ÎªµÚ¶ş¸öÏòÁ¿µÄÆğµãÓëÖÕµã
 */
-int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
+inline int CDemo_ClipView_VCDlg::crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 {
 	int ux=a2.x-a1.x;
 	int uy=a2.y-a1.y;
@@ -707,11 +746,64 @@ int crossMulti(CPoint a1,CPoint a2,CPoint b1,CPoint b2)
 	return ux*vy-uy*vx;
 }
 
+
 /*
-*åŠŸèƒ½ï¼šç”¨äºäº¤ç‚¹æ’åºçš„æ¯”è¾ƒå‡½æ•°ï¼ˆæŒ‰tå€¼å¾—ä»å°åˆ°å¤§æ’åºï¼‰
-*å‚æ•°ï¼ša,båˆ†åˆ«ä¸ºä¸¤ä¸ªäº¤ç‚¹
+*¹¦ÄÜ£ºÅĞ¶ÏÒ»¸öµãÊÇ·ñÔÚÒ»ÌõÏß¶ÎÉÏ£¨²»°üÀ¨ÑÓ³¤£©
+*²ÎÊı£ºpÎª¸Ãµã£¬p1¡¢p2Îª¸ÃÏß¶ÎµÄÁ½¸ö¶Ëµã£¬iÎª¸ÃÏß¶Î¶ÔÓ¦µÄ±ßµÄĞòºÅ
+*Ë¼Â·£ºÏÈÅĞ¶ÏµãÊÇ·ñÔÚÏß¶ÎµÄ¾ØĞÎ¿òÄÚ£¬²»ÊÇµÄ»°Ö±½Ó·µ»Øfalse£»ÔÙÅĞ¶Ï(P-P1)X(P2-P1)ÊÇ·ñµÈÓÚ0£¬µÈÓÚ0±íÊ¾ÔÚÏß¶ÎÉÏ¡£
 */
-bool Compare(IntersectPoint a,IntersectPoint b)
+inline bool CDemo_ClipView_VCDlg::isPointInLine(CPoint& p,CPoint& p1,CPoint& p2,int i)
+{
+	if (p.x<edgeRect[i].left || p.x>edgeRect[i].right || 
+		p.y<edgeRect[i].bottom || p.y>edgeRect[i].top)
+		return false;
+	if (!crossMulti(p1,p,p1,p2)==0)							//ÅĞ¶Ï²æ»ıÊÇ·ñÎª0
+		return false;
+	return true;
+}
+
+/*
+*¹¦ÄÜ£ºÅĞ¶ÏÄ³Ò»ÌõÏß¶ÎÊÇ·ñÓë¶à±ßĞÎµÄ±ß½çÖØµş£¬ÒòÎª³ÌĞòĞèÒªÔÚ×îºóÏÔÊ¾ÖØµşµÄÏß¶ÎÊıÁ¿
+*Ë¼Â·£ºÏÈÅĞ¶ÏÊÇ·ñÆ½ĞĞ£¬²»Æ½ĞĞ¾ÍÌø¹ı£»ÔÙÅĞ¶ÏÊÇ·ñÓĞÒ»¸ö¶ËµãÔÚÁíÒ»ÌõÏß¶ÎÉÏ£¬ÓĞµÄ»°¾ÍËµÃ÷ÖØµş
+*/
+bool CDemo_ClipView_VCDlg::isOverlap(Line l)
+{
+	int size=boundary.vertexs.size()-1;
+	for (int i=0;i<size;i++)
+	{
+		CPoint p1=boundary.vertexs[i];
+		CPoint p2=boundary.vertexs[i+1];
+
+		if (!((p2.x-p1.x)*(l.endpoint.y-l.startpoint.y)==(p2.y-p1.y)*(l.endpoint.x-l.startpoint.x)))
+			continue;
+
+		bool isP1InLine=false,isP2InLine=false,isP3InLine=true;
+		isP1InLine=isPointInLine(l.startpoint,p1,p2,i);
+		if (!isP1InLine)
+			isP2InLine=isPointInLine(l.endpoint,p1,p2,i);
+
+		if (!isP1InLine && !isP2InLine)
+		{
+			if (p1.x<min(l.startpoint.x,l.endpoint.x) || p1.x>max(l.startpoint.x,l.endpoint.x) || 
+				p1.y<min(l.startpoint.y,l.endpoint.y) || p1.y>max(l.startpoint.y,l.endpoint.y))
+				isP3InLine=false;
+			if (isP3InLine && !crossMulti(l.startpoint,p1,l.startpoint,l.endpoint)==0)
+				isP3InLine=false;
+		}
+
+
+		if (isP1InLine || isP2InLine || isP3InLine)
+			return true;
+	}
+	return false;
+}
+
+
+/*
+*¹¦ÄÜ£ºÓÃÓÚ½»µãÅÅĞòµÄ±È½Ïº¯Êı£¨°´tÖµµÃ´ÓĞ¡µ½´óÅÅĞò£©
+*²ÎÊı£ºa,b·Ö±ğÎªÁ½¸ö½»µã
+*/
+bool CDemo_ClipView_VCDlg::Compare(IntersectPoint a,IntersectPoint b)
 {
 	if (a.t<b.t)
 		return true;
@@ -720,29 +812,29 @@ bool Compare(IntersectPoint a,IntersectPoint b)
 }
 
 /*
-*åŠŸèƒ½ï¼šåˆ¤æ–­å¤šè¾¹å½¢æ¯ä¸ªç‚¹æ˜¯å‡¹ç‚¹è¿˜æ˜¯å‡¸ç‚¹
-*æ€è·¯ï¼šæ±‚ç›¸é‚»ä¸¤è¾¹çš„å‘é‡çš„å‰ç§¯ï¼Œå·²çŸ¥å‡¸ç‚¹çš„å€¼ä¸å‡¹ç‚¹çš„å€¼æ­£è´Ÿæ€§ä¸åŒï¼Œ
-*      å¹¶ä¸”xåæ ‡æœ€å¤§çš„ç‚¹ä¸€å®šæ˜¯å‡¸ç‚¹ã€‚å…ˆè®¡ç®—ç›¸é‚»ä¸¤è¾¹çš„å‘é‡çš„å‰ç§¯å¹¶ä¿å­˜ï¼Œ
-*	   åŒæ—¶æ‰¾å‡ºxæœ€å¤§çš„ç‚¹ã€‚å†é€šè¿‡ä¸xæœ€å¤§çš„ç‚¹æ¯”è¾ƒæ­£è´Ÿæ€§å¾—å‡ºç‚¹çš„å‡¹å‡¸æ€§ã€‚
+*¹¦ÄÜ£ºÅĞ¶Ï¶à±ßĞÎÃ¿¸öµãÊÇ°¼µã»¹ÊÇÍ¹µã
+*Ë¼Â·£ºÇóÏàÁÚÁ½±ßµÄÏòÁ¿µÄ²æ»ı£¬ÒÑÖªÍ¹µãµÄÖµÓë°¼µãµÄÖµÕı¸ºĞÔ²»Í¬£¬
+*      ²¢ÇÒx×ø±ê×î´óµÄµãÒ»¶¨ÊÇÍ¹µã¡£ÏÈ¼ÆËãÏàÁÚÁ½±ßµÄÏòÁ¿µÄ²æ»ı²¢±£´æ£¬
+*	   Í¬Ê±ÕÒ³öx×î´óµÄµã¡£ÔÙÍ¨¹ıÓëx×î´óµÄµã±È½ÏÕı¸ºĞÔµÃ³öµãµÄ°¼Í¹ĞÔ¡£
 */
-void preprocessJudgeConvexPoint(vector<BOOL>& convexPoint)
+void CDemo_ClipView_VCDlg::preprocessJudgeConvexPoint(vector<BOOL>& convexPoint)
 {
-	int dotnum=boundary.vertexs.size()-1;										//å¤šè¾¹å½¢é¡¶ç‚¹æ•°
+	int dotnum=boundary.vertexs.size()-1;										//¶à±ßĞÎ¶¥µãÊı
 	vector<int> z;
 	int max=-1,maxnum=-1;
 	for (int i=0;i<dotnum;i++)
 	{																				
-		CPoint* p1;																//å½“å‰ç‚¹ä¸ºp2,å…¶å‰ä¸€ç‚¹ä¸ºp1,åä¸€ç‚¹ä¸ºp3
+		CPoint* p1;																//µ±Ç°µãÎªp2,ÆäÇ°Ò»µãÎªp1,ºóÒ»µãÎªp3
 		if (i==0)
 			p1=&boundary.vertexs[dotnum-1];
 		else
 			p1=&boundary.vertexs[i-1];
 		CPoint* p2=&boundary.vertexs[i];
 		CPoint* p3=&boundary.vertexs[i+1];
-		int crossmulti=crossMulti(*p1,*p2,*p2,*p3);								//è®¡ç®—ç›¸é‚»ä¸¤æ¡è¾¹çš„å‰ç§¯ï¼ˆå³p1p2ä¸p2p3ï¼‰
+		int crossmulti=crossMulti(*p1,*p2,*p2,*p3);								//¼ÆËãÏàÁÚÁ½Ìõ±ßµÄ²æ»ı£¨¼´p1p2Óëp2p3£©
 
 		z.push_back(crossmulti);
-		if (p2->x>max)															//æ‰¾å‡ºxæœ€å¤§çš„ç‚¹ï¼Œè®°å½•
+		if (p2->x>max)															//ÕÒ³öx×î´óµÄµã£¬¼ÇÂ¼
 		{
 			max=p2->x;
 			maxnum=i;
@@ -750,7 +842,7 @@ void preprocessJudgeConvexPoint(vector<BOOL>& convexPoint)
 	}
 
 	isConvexPoly=true;
-	//å¼€å§‹ é€šè¿‡ä¸xæœ€å¤§çš„ç‚¹æ¯”è¾ƒæ­£è´Ÿæ€§å¾—å‡ºç‚¹çš„å‡¹å‡¸æ€§
+	//¿ªÊ¼ Í¨¹ıÓëx×î´óµÄµã±È½ÏÕı¸ºĞÔµÃ³öµãµÄ°¼Í¹ĞÔ
 	for (int i=0;i<dotnum;i++)  
 		if ((z[maxnum]>0 && z[i]>0)||(z[maxnum]<0 && z[i]<0))
 			convexPoint.push_back(true);
@@ -759,36 +851,36 @@ void preprocessJudgeConvexPoint(vector<BOOL>& convexPoint)
 			convexPoint.push_back(false);
 			isConvexPoly=false;
 		}
-	//ç»“æŸ é€šè¿‡ä¸xæœ€å¤§çš„ç‚¹æ¯”è¾ƒæ­£è´Ÿæ€§å¾—å‡ºç‚¹çš„å‡¹å‡¸æ€§
+	//½áÊø Í¨¹ıÓëx×î´óµÄµã±È½ÏÕı¸ºĞÔµÃ³öµãµÄ°¼Í¹ĞÔ
 	convexPoint.push_back(convexPoint[0]);
 
 }
 
 /*
-*åŠŸèƒ½ï¼šè®¡ç®—å¤šè¾¹å½¢çš„è¾¹çš„å†…æ³•å‘é‡
-*æ€è·¯ï¼šç»•å¤šè¾¹å½¢çš„è¾¹ç•Œä¾æ¬¡è®¡ç®—ã€‚å¯¹äºæŸä¸€æ¡è¾¹ï¼Œå…ˆéšæ„æ„é€ å‡ºä¸€ä¸ªä¸å½“å‰è¾¹å‚ç›´çš„æ³•å‘é‡ã€‚
-*	   è‹¥è¯¥æ³•å‘é‡ä¸å‰ä¸€æ¡è¾¹çš„å‘é‡çš„ç‚¹ç§¯ä¸ºæ­£ï¼Œåˆ™å°†æ³•å‘é‡åå‘ã€‚
-*	   å¦‚æœè¿™ä¸¤æ¡è¾¹çš„å…¬å…±é¡¶ç‚¹ä¸ºå‡¹ç‚¹ï¼Œåˆ™å°†è¯¥æ³•å‘é‡å†åå‘ã€‚
+*¹¦ÄÜ£º¼ÆËã¶à±ßĞÎµÄ±ßµÄÄÚ·¨ÏòÁ¿
+*Ë¼Â·£ºÈÆ¶à±ßĞÎµÄ±ß½çÒÀ´Î¼ÆËã¡£¶ÔÓÚÄ³Ò»Ìõ±ß£¬ÏÈËæÒâ¹¹Ôì³öÒ»¸öÓëµ±Ç°±ß´¹Ö±µÄ·¨ÏòÁ¿¡£
+*	   Èô¸Ã·¨ÏòÁ¿ÓëÇ°Ò»Ìõ±ßµÄÏòÁ¿µÄµã»ıÎªÕı£¬Ôò½«·¨ÏòÁ¿·´Ïò¡£
+*	   Èç¹ûÕâÁ½Ìõ±ßµÄ¹«¹²¶¥µãÎª°¼µã£¬Ôò½«¸Ã·¨ÏòÁ¿ÔÙ·´Ïò¡£
 */
-void preprocessNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
+void CDemo_ClipView_VCDlg::preprocessNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoint)
 {
 
-	int edgenum=boundary.vertexs.size()-1;											//å¤šè¾¹å½¢è¾¹æ•°
+	int edgenum=boundary.vertexs.size()-1;											//¶à±ßĞÎ±ßÊı
 
 	for (int i=0;i<edgenum;i++)
 	{
 		CPoint p1=boundary.vertexs[i];
-		CPoint p2=boundary.vertexs[i+1];											//p1p2ä¸ºå¤šè¾¹å½¢çš„è¾¹
+		CPoint p2=boundary.vertexs[i+1];											//p1p2Îª¶à±ßĞÎµÄ±ß
 
-		//å¼€å§‹ æ±‚å†…æ³•å‘é‡
-		CPoint p0;																	//p0ä¸ºp1å‰é¢ä¸€ä¸ªé¡¶ç‚¹
+		//¿ªÊ¼ ÇóÄÚ·¨ÏòÁ¿
+		CPoint p0;																	//p0Îªp1Ç°ÃæÒ»¸ö¶¥µã
 		if (i==0)
 			p0=boundary.vertexs[edgenum-1];
 		else
 			p0=boundary.vertexs[i-1];
 
 		double n1,n2;		
-		if (p2.y-p1.y==0)															//å…ˆä»»æ„ç®—å‡ºä¸€ä¸ªæ³•å‘é‡
+		if (p2.y-p1.y==0)															//ÏÈÈÎÒâËã³öÒ»¸ö·¨ÏòÁ¿
 		{
 			n2=1;
 			n1=0;
@@ -798,12 +890,12 @@ void preprocessNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoi
 			n1=1;
 			n2=-(double)(p2.x-p1.x)/(p2.y-p1.y);
 		}
-		if ((p1.x-p0.x)*n1+(p1.y-p0.y)*n2>0)										//ä¸å‰ä¸€æ¡è¾¹ç‚¹ä¹˜ï¼Œå¦‚æœæ–¹å‘é”™äº†ï¼Œä½¿æ³•å‘é‡åå‘
+		if ((p1.x-p0.x)*n1+(p1.y-p0.y)*n2>0)										//ÓëÇ°Ò»Ìõ±ßµã³Ë£¬Èç¹û·½Ïò´íÁË£¬Ê¹·¨ÏòÁ¿·´Ïò
 		{
 			n1=-n1;
 			n2=-n2;
 		}
-		if (!convexPoint[i])														//å¦‚æœæ˜¯å‡¹ç‚¹ï¼Œæ³•å‘é‡å†åå‘
+		if (!convexPoint[i])														//Èç¹ûÊÇ°¼µã£¬·¨ÏòÁ¿ÔÙ·´Ïò
 		{
 			n1=-n1;
 			n2=-n2;
@@ -813,17 +905,17 @@ void preprocessNormalVector(vector<Vector>& normalVector,vector<BOOL>& convexPoi
 		nv.x=n1;
 		nv.y=n2;
 		normalVector.push_back(nv);
-		//ç»“æŸ æ±‚å†…æ³•å‘é‡
+		//½áÊø ÇóÄÚ·¨ÏòÁ¿
 	}
 }
 
 
 /*
-*åŠŸèƒ½ï¼šè®¡ç®—å¤šè¾¹å½¢çš„è¾¹çš„å¤–çŸ©å½¢æ¡†
-*æ€è·¯ï¼šæŸçº¿æ®µçš„å¤–çŸ©å½¢æ¡†æ˜¯ä»¥è¯¥çº¿æ®µä¸ºå¯¹è§’çº¿çš„çŸ©å½¢ï¼Œ
-*	   ç”¨äºå¿«é€Ÿæ’é™¤çº¿æ®µä¸è¾¹ä¸ç›¸äº¤çš„æƒ…å†µï¼ˆå½“è¾¹çš„å¤–çŸ©å½¢æ¡†ä¸çº¿æ®µçš„å¤–çŸ©å½¢æ¡†ä¸ç›¸äº¤æ—¶ï¼‰ã€‚   
+*¹¦ÄÜ£º¼ÆËã¶à±ßĞÎµÄ±ßµÄÍâ¾ØĞÎ¿ò
+*Ë¼Â·£ºÄ³Ïß¶ÎµÄÍâ¾ØĞÎ¿òÊÇÒÔ¸ÃÏß¶ÎÎª¶Ô½ÇÏßµÄ¾ØĞÎ£¬
+*	   ÓÃÓÚ¿ìËÙÅÅ³ıÏß¶ÎÓë±ß²»Ïà½»µÄÇé¿ö£¨µ±±ßµÄÍâ¾ØĞÎ¿òÓëÏß¶ÎµÄÍâ¾ØĞÎ¿ò²»Ïà½»Ê±£©¡£   
 */
-void preprocessEdgeRect(const Boundary boundary)
+void CDemo_ClipView_VCDlg::preprocessEdgeRect(const Boundary boundary)
 {
 	int edgenum=boundary.vertexs.size()-1;
 	for (int i=0;i<edgenum;i++)
@@ -841,30 +933,32 @@ void preprocessEdgeRect(const Boundary boundary)
 
 
 /*
-*åŠŸèƒ½ï¼šå¤„ç†å‡¹å¤šè¾¹å½¢çš„è£å‰ª
-*æ€è·¯ï¼šå…ˆé¢„å¤„ç†åˆ¤æ–­å‡ºæ¯ä¸ªç‚¹çš„å‡¹å‡¸æ€§ï¼Œç®—å‡ºæ‰€æœ‰å¤šè¾¹å½¢çš„è¾¹çš„å¤–çŸ©å½¢æ¡†ã€‚
-*	   ç„¶åæšä¸¾æ¯æ¡çº¿æ®µä¸æ¯æ¡å¤šè¾¹å½¢çš„è¾¹ï¼Œå…ˆé€šè¿‡å¿«é€Ÿæ’é™¤æ³•
-*      æ’é™¤æ˜æ˜¾ä¸å¯èƒ½ç›¸äº¤çš„è¾¹ï¼Œå†é€šè¿‡è·¨ç«‹è¯•éªŒè¿›ä¸€æ­¥åˆ¤æ–­æ˜¯å¦æœ‰äº¤ç‚¹ã€‚
-*	   æ¥ç€ç”¨æ”¹è¿›çš„cyrus-beckç®—æ³•ç®—å‡ºäº¤ç‚¹çš„å€¼ï¼Œä»¥åŠäº¤ç‚¹çš„æ€§è´¨
-*     ï¼ˆå‡ºç‚¹è¿˜æ˜¯å…¥ç‚¹ï¼‰ï¼Œå¹¶å°†çº¿æ®µçš„èµ·ç‚¹ä½œä¸ºå…¥ç‚¹ï¼Œç»ˆç‚¹ä½œä¸ºå‡ºç‚¹ã€‚
-*	   ç„¶åå¤„ç†å½“çº¿æ®µä¸å¤šè¾¹å½¢çš„é¡¶ç‚¹ç›¸äº¤çš„ç‰¹æ®Šæƒ…å†µã€‚
-*	   æœ€åå¯»æ‰¾æ‰€æœ‰ç¬¦åˆâ€œå…¥ç‚¹-å‡ºç‚¹â€çš„çº¿æ®µä½œä¸ºæ˜¾ç¤ºçš„çº¿æ®µã€‚
+*¹¦ÄÜ£º´¦Àí°¼¶à±ßĞÎµÄ²Ã¼ô
+*Ë¼Â·£ºÏÈÔ¤´¦ÀíÅĞ¶Ï³öÃ¿¸öµãµÄ°¼Í¹ĞÔ£¬Ëã³öËùÓĞ¶à±ßĞÎµÄ±ßµÄÍâ¾ØĞÎ¿ò¡£
+*	   È»ºóÃ¶¾ÙÃ¿ÌõÏß¶ÎÓëÃ¿Ìõ¶à±ßĞÎµÄ±ß£¬ÏÈÍ¨¹ı¿ìËÙÅÅ³ı·¨
+*      ÅÅ³ıÃ÷ÏÔ²»¿ÉÄÜÏà½»µÄ±ß£¬ÔÙÍ¨¹ı¿çÁ¢ÊÔÑé½øÒ»²½ÅĞ¶ÏÊÇ·ñÓĞ½»µã¡£
+*	   ½Ó×ÅÓÃ¸Ä½øµÄcyrus-beckËã·¨Ëã³ö½»µãµÄÖµ£¬ÒÔ¼°½»µãµÄĞÔÖÊ
+*     £¨³öµã»¹ÊÇÈëµã£©£¬²¢½«Ïß¶ÎµÄÆğµã×÷ÎªÈëµã£¬ÖÕµã×÷Îª³öµã¡£
+*	   È»ºó´¦Àíµ±Ïß¶ÎÓë¶à±ßĞÎµÄ¶¥µãÏà½»µÄÌØÊâÇé¿ö¡£
+*	   ×îºóÑ°ÕÒËùÓĞ·ûºÏ¡°Èëµã-³öµã¡±µÄÏß¶Î×÷ÎªÏÔÊ¾µÄÏß¶Î¡£
 */
-void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
+void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 {
-	vector<IntersectPoint> intersectPoint;										//çº¿æ®µçš„æ‰€æœ‰äº¤ç‚¹ï¼ˆä¹ŸåŒ…æ‹¬çº¿æ®µçš„èµ·ç‚¹ä¸ç»ˆç‚¹ï¼‰
+	vector<IntersectPoint> intersectPoint;										//Ïß¶ÎµÄËùÓĞ½»µã£¨Ò²°üÀ¨Ïß¶ÎµÄÆğµãÓëÖÕµã£©
 
 	int edgenum=boundary.vertexs.size()-1;
 	int linenum=lines.size();
 	RECT r;
-	for (int i =0;i<linenum;i++)												//æšä¸¾æ¯æ¡çº¿æ®µ
+	for (int i =0;i<linenum;i++)												//Ã¶¾ÙÃ¿ÌõÏß¶Î
 	{
 		r.bottom=min(lines[i].startpoint.y,lines[i].endpoint.y);
 		r.top=max(lines[i].startpoint.y,lines[i].endpoint.y);
 		r.left=min(lines[i].startpoint.x,lines[i].endpoint.x);
 		r.right=max(lines[i].startpoint.x,lines[i].endpoint.x);
 
-		intersectPoint.clear();													//å°†çº¿æ®µèµ·ç‚¹å½“ä½œå…¥ç‚¹æ”¾åœ¨é¦–ä½
+
+
+		intersectPoint.clear();													//½«Ïß¶ÎÆğµãµ±×÷Èëµã·ÅÔÚÊ×Î»
 		IntersectPoint ip1;
 		ip1.isIntoPoly=true;
 		ip1.t=0;
@@ -872,41 +966,39 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 		intersectPoint.push_back(ip1);
 
 		BOOL haveIntersect=false;
-		for (int j=0;j<edgenum;j++)												//æšä¸¾æ¯æ¡å¤šè¾¹å½¢çš„è¾¹
+		for (int j=0;j<edgenum;j++)												//Ã¶¾ÙÃ¿Ìõ¶à±ßĞÎµÄ±ß
 		{
-			//å¼€å§‹ å¿«é€Ÿæ’é™¤æ³•
+			//¿ªÊ¼ ¿ìËÙÅÅ³ı·¨
 			if (r.left>edgeRect[j].right || r.right<edgeRect[j].left ||
 				r.top<edgeRect[j].bottom || r.bottom>edgeRect[j].top)
 				continue;
-			//ç»“æŸ å¿«é€Ÿæ’é™¤æ³•
+			//½áÊø ¿ìËÙÅÅ³ı·¨
 
 
-			//å¼€å§‹ è·¨ç«‹è¯•éªŒ
+			//¿ªÊ¼ ¿çÁ¢ÊÔÑé
 			CPoint p1=boundary.vertexs[j];
-			CPoint p2=boundary.vertexs[j+1];									//p1p2ä¸ºå¤šè¾¹å½¢çš„è¾¹
+			CPoint p2=boundary.vertexs[j+1];									//p1p2Îª¶à±ßĞÎµÄ±ß
 			CPoint q1=lines[i].startpoint;
-			CPoint q2=lines[i].endpoint;										//q1q2ä¸ºçº¿æ®µ
-			long long a= 
-				((long long)crossMulti(p1,q1,p1,p2))*(crossMulti(p1,p2,p1,q2));
-			long long b= 
-				((long long)crossMulti(q1,p1,q1,q2))*(crossMulti(q1,q2,q1,p2));
-			if (!(a>=0 && b>=0))												//ä¸ç›¸äº¤å°±è·³è¿‡è¿™æ¡è¾¹
+			CPoint q2=lines[i].endpoint;										//q1q2ÎªÏß¶Î
+			long long a= ((long long)crossMulti(p1,q1,p1,p2))*(crossMulti(p1,p2,p1,q2));
+			long long b= ((long long)crossMulti(q1,p1,q1,q2))*(crossMulti(q1,q2,q1,p2));
+			if (!(a>=0 && b>=0))												//²»Ïà½»¾ÍÌø¹ıÕâÌõ±ß
 				continue;
-			//ç»“æŸ è·¨ç«‹è¯•éªŒ
+			//½áÊø ¿çÁ¢ÊÔÑé
 
-			//å¼€å§‹ å–å‡ºå†…æ³•å‘é‡
+			//¿ªÊ¼ È¡³öÄÚ·¨ÏòÁ¿
 			double n1=normalVector[j].x;
 			double n2=normalVector[j].y;
-			//ç»“æŸ å–å‡ºå†…æ³•å‘é‡
+			//½áÊø È¡³öÄÚ·¨ÏòÁ¿
 
-			//å¼€å§‹ cyrus-beckç®—æ³• ç®—å‡ºå‚æ•°t
+			//¿ªÊ¼ cyrus-beckËã·¨ Ëã³ö²ÎÊıt
 			double t1=n1*(q2.x-q1.x)+n2*(q2.y-q1.y);
 			double t2=n1*(q1.x-p1.x)+n2*(q1.y-p1.y);
 			double t=-t2/t1;
 			CPoint pt;
 			pt.x=(LONG)((q2.x-q1.x)*t+q1.x);
 			pt.y=(LONG)((q2.y-q1.y)*t+q1.y);
-			if (t>=-0.000000001 && t<=1.000000001)								//å¦‚æœç®—å‡ºçš„å‚æ•°tæ»¡è¶³ t>=0 && t<=1, è¯´æ˜äº¤ç‚¹åœ¨çº¿æ®µä¸Šï¼Œå°†å®ƒåŠ å…¥äº¤ç‚¹é›†
+			if (t>=-0.000000001 && t<=1.000000001)								//Èç¹ûËã³öµÄ²ÎÊıtÂú×ã t>=0 && t<=1, ËµÃ÷½»µãÔÚÏß¶ÎÉÏ£¬½«Ëü¼ÓÈë½»µã¼¯
 			{
 				IntersectPoint ip;
 				if (t1>0)
@@ -920,42 +1012,64 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 
 				haveIntersect=true;
 			}
-			//ç»“æŸ cyrus-beckç®—æ³• ç®—å‡ºå‚æ•°t
+			//½áÊø cyrus-beckËã·¨ Ëã³ö²ÎÊıt
 
 		}
 
 
-		//å¼€å§‹ æ²¡æœ‰äº¤ç‚¹çš„æƒ…å†µ
+		bool overlap=isOverlap(lines[i]);
+		if (overlap)
+		{
+				omp_set_lock(&critical_line_number[2]); 
+				line_overlap_bound++;
+				omp_unset_lock(&critical_line_number[2]); 
+		}
+
+		//¿ªÊ¼ Ã»ÓĞ½»µãµÄÇé¿ö
 		if (!haveIntersect)
 		{
-			if (isPointInBoundary(lines[i].startpoint))							//å¦‚æœåœ¨å¤šè¾¹å½¢å†…
+			if (isPointInBoundary(lines[i].startpoint))							//Èç¹ûÔÚ¶à±ßĞÎÄÚ
 			{
 				Line l=lines[i];
+				
 
-				EnterCriticalSection(&critical_sections[threadNumber]); 
+				omp_set_lock(&critical_sections[threadNumber]); 
 				lines_to_draw[threadNumber].push_back(lines[i]);
-				LeaveCriticalSection(&critical_sections[threadNumber]); 
+				omp_unset_lock(&critical_sections[threadNumber]);				
+				
+				if (!overlap)
+				{
+					omp_set_lock(&critical_line_number[0]); 
+					line_in_bound++;
+					omp_unset_lock(&critical_line_number[0]); 
+				}
+			}
+			else if (!overlap)
+
+			{
+				omp_set_lock(&critical_line_number[1]); 
+				line_out_bound++;
+				omp_unset_lock(&critical_line_number[1]); 
 			}
 			continue;
 		}
-		//ç»“æŸ æ²¡æœ‰äº¤ç‚¹çš„æƒ…å†µ
+		//½áÊø Ã»ÓĞ½»µãµÄÇé¿ö
 
-		//å¼€å§‹ å°†çº¿æ®µç»ˆç‚¹å½“ä½œå‡ºç‚¹æ”¾åœ¨æœ«ä½
+		//¿ªÊ¼ ½«Ïß¶ÎÖÕµãµ±×÷³öµã·ÅÔÚÄ©Î»
 		IntersectPoint ip2;
 		ip2.isIntoPoly=false;
 		ip2.t=1;
 		ip2.point=lines[i].endpoint;
 		intersectPoint.push_back(ip2);
-		//ç»“æŸ å°†çº¿æ®µç»ˆç‚¹å½“ä½œå‡ºç‚¹æ”¾åœ¨æœ«ä½
+		//½áÊø ½«Ïß¶ÎÖÕµãµ±×÷³öµã·ÅÔÚÄ©Î»
 
-		std::sort(intersectPoint.begin()+1,
-			intersectPoint.end()-1,Compare);									//æŒ‰tä»å°åˆ°å¤§æ’åº
+		std::sort(intersectPoint.begin()+1,intersectPoint.end()-1,Compare);		//°´t´ÓĞ¡µ½´óÅÅĞò
 
 
-		/*å¼€å§‹ å¤„ç†
-		å¦‚æœæœ‰ä¸¤ç‚¹tå€¼ç›¸åŒï¼ˆå³çº¿æ®µä¸å¤šè¾¹å½¢çš„é¡¶ç‚¹ç›¸äº¤çš„ç‰¹æ®Šæƒ…å†µï¼‰ï¼Œ
-		å¹¶ä¸”ä¸€ä¸ªæ˜¯å…¥ç‚¹ï¼Œä¸€ä¸ªæ˜¯å‡ºç‚¹ï¼Œåˆ™æ ¹æ®é¡¶ç‚¹çš„å‡¹å‡¸æ€§é‡æ–°å®‰æ’å…¥ã€å‡º
-		ï¼ˆä¸èƒ½åŠ¨ç¬¬ä¸€ä¸ªç‚¹å’Œæœ€åçš„ç‚¹ï¼Œå³çº¿æ®µçš„ç«¯ç‚¹ï¼‰*/
+		/*¿ªÊ¼ ´¦Àí
+		Èç¹ûÓĞÁ½µãtÖµÏàÍ¬£¨¼´Ïß¶ÎÓë¶à±ßĞÎµÄ¶¥µãÏà½»µÄÌØÊâÇé¿ö£©£¬
+		²¢ÇÒÒ»¸öÊÇÈëµã£¬Ò»¸öÊÇ³öµã£¬Ôò¸ù¾İ¶¥µãµÄ°¼Í¹ĞÔÖØĞÂ°²ÅÅÈë¡¢³ö
+		£¨²»ÄÜ¶¯µÚÒ»¸öµãºÍ×îºóµÄµã£¬¼´Ïß¶ÎµÄ¶Ëµã£©*/
 		vector<IntersectPoint>::iterator iter = intersectPoint.begin();
 		iter++;
 		for (;iter!= intersectPoint.end()&&(iter+1)!= intersectPoint.end()
@@ -963,22 +1077,20 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 			if ( ((*iter).isIntoPoly ^ (*(iter+1)).isIntoPoly )
 				&&abs((*iter).t-(*(iter+1)).t)<1e-9)  
 			{
-				//å¼€å§‹ å¾—åˆ°è¯¥é¡¶ç‚¹åºå·
+				//¿ªÊ¼ µÃµ½¸Ã¶¥µãĞòºÅ
 				int contexPointNumber=max((*iter).contexPoint,(*(iter+1)).contexPoint);
-				if (((*iter).contexPoint==edgenum-1 
-					&& (*(iter+1)).contexPoint==0)
-					||((*(iter+1)).contexPoint==edgenum-1
-					&& (*iter).contexPoint==0))
+				if ( ((*iter).contexPoint==edgenum-1 && (*(iter+1)).contexPoint==0)
+					|| ((*(iter+1)).contexPoint==edgenum-1&& (*iter).contexPoint==0) )
 					contexPointNumber=0;
-				//ç»“æŸ å¾—åˆ°è¯¥é¡¶ç‚¹åºå·
+				//½áÊø µÃµ½¸Ã¶¥µãĞòºÅ
 
-				if (convexPoint[contexPointNumber]&& !(*iter).isIntoPoly)		//å¦‚æœæ˜¯å‡¸ç‚¹ï¼Œå®‰æ’ä¸ºå…ˆè¿›åå‡º
+				if (convexPoint[contexPointNumber]&& !(*iter).isIntoPoly)		//Èç¹ûÊÇÍ¹µã£¬°²ÅÅÎªÏÈ½øºó³ö
 				{
 					(*iter).isIntoPoly=true;
 					(*(iter+1)).isIntoPoly=false;
 				}
 				else if (!convexPoint[contexPointNumber]
-						&& (*iter).isIntoPoly)									//å¦‚æœæ˜¯å‡¹ç‚¹ï¼Œå®‰æ’ä¸ºå…ˆå‡ºåè¿›
+						&& (*iter).isIntoPoly)									//Èç¹ûÊÇ°¼µã£¬°²ÅÅÎªÏÈ³öºó½ø
 				{
 					(*iter).isIntoPoly=false;
 					(*(iter+1)).isIntoPoly=true;
@@ -987,7 +1099,7 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 			}
 
 
-			//å¼€å§‹ ä¿å­˜äº¤ç‚¹
+			//¿ªÊ¼ ±£´æ½»µã
 			int size=(int)intersectPoint.size()-1;
 			for (int j=0;j<size;j++)
 			{
@@ -996,61 +1108,61 @@ void dealConcave(vector<Line>& lines,Boundary& boundary,int threadNumber)
 					Line l;
 					l.startpoint=intersectPoint[j].point;
 					l.endpoint=intersectPoint[j+1].point;
-					EnterCriticalSection(&critical_sections[threadNumber]); 
+					omp_set_lock(&critical_sections[threadNumber]); 
 					lines_to_draw[threadNumber].push_back(l);
-					LeaveCriticalSection(&critical_sections[threadNumber]); 
+					omp_unset_lock(&critical_sections[threadNumber]); 
 					j++;
 				}
 			}
-			//ç»“æŸ ä¿å­˜äº¤ç‚¹
+			//½áÊø ±£´æ½»µã
 
-		/*ç»“æŸ å¤„ç†
-		å¦‚æœæœ‰ä¸¤ç‚¹tå€¼ç›¸åŒï¼ˆå³çº¿æ®µä¸å¤šè¾¹å½¢çš„é¡¶ç‚¹ç›¸äº¤çš„ç‰¹æ®Šæƒ…å†µï¼‰ï¼Œ
-		å¹¶ä¸”ä¸€ä¸ªæ˜¯å…¥ç‚¹ï¼Œä¸€ä¸ªæ˜¯å‡ºç‚¹ï¼Œåˆ™æ ¹æ®é¡¶ç‚¹çš„å‡¹å‡¸æ€§é‡æ–°å®‰æ’å…¥ã€å‡º
-		ï¼ˆä¸èƒ½åŠ¨ç¬¬ä¸€ä¸ªç‚¹å’Œæœ€åçš„ç‚¹ï¼Œå³çº¿æ®µçš„ç«¯ç‚¹ï¼‰*/
+		/*½áÊø ´¦Àí
+		Èç¹ûÓĞÁ½µãtÖµÏàÍ¬£¨¼´Ïß¶ÎÓë¶à±ßĞÎµÄ¶¥µãÏà½»µÄÌØÊâÇé¿ö£©£¬
+		²¢ÇÒÒ»¸öÊÇÈëµã£¬Ò»¸öÊÇ³öµã£¬Ôò¸ù¾İ¶¥µãµÄ°¼Í¹ĞÔÖØĞÂ°²ÅÅÈë¡¢³ö
+		£¨²»ÄÜ¶¯µÚÒ»¸öµãºÍ×îºóµÄµã£¬¼´Ïß¶ÎµÄ¶Ëµã£©*/
 	}
 
 }
 
 
-/*----------------------------------------------- ä»»æ„å¤šè¾¹å½¢çº¿è£å‰ªç®—æ³• ends--------------------------------------------------------*/
+/*----------------------------------------------- ÈÎÒâ¶à±ßĞÎÏß²Ã¼ôËã·¨ ends--------------------------------------------------------*/
 
 
 
 
 
-/*----------------------------------------------- ä»»æ„å¤šè¾¹å½¢åœ†è£å‰ªç®—æ³• starts------------------------------------------------------*/
+/*----------------------------------------------- ÈÎÒâ¶à±ßĞÎÔ²²Ã¼ôËã·¨ starts------------------------------------------------------*/
 
 /*
-*åŠŸèƒ½ï¼šè®¡ç®—ä¸€ä¸ªå®¹å™¨çš„åœ†ä¸å¤šè¾¹å½¢çª—å£ç›¸äº¤éœ€è¦ç»˜åˆ¶çš„å¼§å½¢ï¼Œå¹¶å­˜å‚¨åœ¨circles_to_drawå®¹å™¨ä¸­
-*æ€è·¯ï¼šé€šè¿‡è®¡ç®—åœ†ä¸å¤šè¾¹å½¢çš„äº¤ç‚¹ï¼Œå¹¶é€šè¿‡ç›¸é‚»äº¤ç‚¹çš„é¡ºæ—¶é’ˆçš„åœ†ä¸Šçš„äº¤ç‚¹æ˜¯å¦åœ¨å¤šè¾¹å½¢å†…ï¼Œ
-*	   åˆ¤æ–­å¼§çº¿æ˜¯å¦éœ€è¦ç»˜åˆ¶   
+*¹¦ÄÜ£º¼ÆËãÒ»¸öÈİÆ÷µÄÔ²Óë¶à±ßĞÎ´°¿ÚÏà½»ĞèÒª»æÖÆµÄ»¡ĞÎ£¬²¢´æ´¢ÔÚcircles_to_drawÈİÆ÷ÖĞ
+*Ë¼Â·£ºÍ¨¹ı¼ÆËãÔ²Óë¶à±ßĞÎµÄ½»µã£¬²¢Í¨¹ıÏàÁÚ½»µãµÄË³Ê±ÕëµÄÔ²ÉÏµÄ½»µãÊÇ·ñÔÚ¶à±ßĞÎÄÚ£¬
+*	   ÅĞ¶Ï»¡ÏßÊÇ·ñĞèÒª»æÖÆ   
 */
-void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
+void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 {
 
-	for(unsigned int i = 0;i<circles.size();i++){									//å†æ¬¡å¼€å§‹éå†æ¯ä¸€ä¸ªåœ†
-		vector<XPoint> point_Array;													//ç”¨äºå­˜å‚¨æ¯ä¸ªåœ†ä¸å¤šè¾¹å½¢çª—å£çš„äº¤ç‚¹
-		getInterpointArray(point_Array,i,circles);									//è·å¾—å­˜å‚¨äº¤ç‚¹çš„å®¹å™¨
+	for(unsigned int i = 0;i<circles.size();i++){									//ÔÙ´Î¿ªÊ¼±éÀúÃ¿Ò»¸öÔ²
+		vector<XPoint> point_Array;													//ÓÃÓÚ´æ´¢Ã¿¸öÔ²Óë¶à±ßĞÎ´°¿ÚµÄ½»µã
+		getInterpointArray(point_Array,i,circles);									//»ñµÃ´æ´¢½»µãµÄÈİÆ÷
 
-		//å¼€å§‹ è®¨è®ºæ²¡æœ‰äº¤ç‚¹ä»¥åŠç›¸åˆ‡çš„æƒ…å†µ
-		if(point_Array.size()==0||point_Array.size()==1)							//å°†å®Œå…¨è·Ÿå¤šè¾¹å½¢ä¸ç›¸äº¤ä»¥åŠç›¸åˆ‡çš„æƒ…å†µçš„åœ†æ’é™¤ï¼Œ
+		//¿ªÊ¼ ÌÖÂÛÃ»ÓĞ½»µãÒÔ¼°ÏàÇĞµÄÇé¿ö
+		if(point_Array.size()==0||point_Array.size()==1)							//½«ÍêÈ«¸ú¶à±ßĞÎ²»Ïà½»ÒÔ¼°ÏàÇĞµÄÇé¿öµÄÔ²ÅÅ³ı£¬
 		{
 			if (point_Array.size()==1)
 			{
-				EnterCriticalSection(&critical_circle_number[1]);  
-				circle_inter_boun++;
-				LeaveCriticalSection(&critical_circle_number[1]);
+				omp_set_lock(&critical_circle_number[1]);  
+				circle_inter_bound++;
+				omp_unset_lock(&critical_circle_number[1]);
 			}
 			XPoint mm;
 			mm.x = circles[i].center.x;
 			mm.y = circles[i].center.y;
-			bool inBoundary = isPointInBoundary(mm);								//åœ†å¿ƒè‹¥åœ¨å¤šè¾¹å½¢å†…
+			bool inBoundary = isPointInBoundary(mm);								//Ô²ĞÄÈôÔÚ¶à±ßĞÎÄÚ
 			/*if (inBoundary==false&&point_Array.size()==0)
 			{
-				EnterCriticalSection(&critical_circle_number[1]);  
-				circle_inter_boun++;
-				LeaveCriticalSection(&critical_circle_number[1]);
+				omp_set_lock(&critical_circle_number[1]);  
+				circle_inter_bound++;
+				omp_unset_lock(&critical_circle_number[1]);
 			}*/
 			if (inBoundary==true)
 			{
@@ -1059,20 +1171,20 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 				bool t = (_x*_x+_y*_y)>(circles[i].radius*circles[i].radius);
 				/*if (t == false && point_Array.size()==0)
 				{
-					EnterCriticalSection(&critical_circle_number[1]);  
-					circle_inter_boun++;
-				LeaveCriticalSection(&critical_circle_number[1]);
+					omp_set_lock(&critical_circle_number[1]);  
+					circle_inter_bound++;
+				omp_unset_lock(&critical_circle_number[1]);
 				}*/
 				
-				if (t==true)														//è‹¥åœ†çš„åŠå¾„æ¯”è¾ƒå°
+				if (t==true)														//ÈôÔ²µÄ°ë¾¶±È½ÏĞ¡
 				{
 					if (point_Array.size()==0)
 					{
-						EnterCriticalSection(&critical_circle_number[0]);  
-						circle_in_boun++;
-						LeaveCriticalSection(&critical_circle_number[0]);
+						omp_set_lock(&critical_circle_number[0]);  
+						circle_in_bound++;
+						omp_unset_lock(&critical_circle_number[0]);
 					}
-					//å¼€å§‹ ç”»æ•´ä¸ªåœ†
+					//¿ªÊ¼ »­Õû¸öÔ²
 					CRect rect(circles[i].center.x - circles[i].radius,circles[i].center.y - 
 						       circles[i].radius,circles[i].center.x + circles[i].radius,
 							   circles[i].center.y + circles[i].radius);
@@ -1085,28 +1197,28 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 					arc2draw.rect = rect;
 					arc2draw.start_point = start_point;
 					arc2draw.end_point = end_point;
-					EnterCriticalSection(&critical_sections[threadNumber]);  
+					omp_set_lock(&critical_sections[threadNumber]);  
 					circles_to_draw[threadNumber].push_back(arc2draw);
-					LeaveCriticalSection(&critical_sections[threadNumber]); 
-					//ç»“æŸ ç”»æ•´ä¸ªåœ†
+					omp_unset_lock(&critical_sections[threadNumber]); 
+					//½áÊø »­Õû¸öÔ²
 				}
 			}
 		}
-		//ç»“æŸ è®¨è®ºæ²¡æœ‰äº¤ç‚¹ä»¥åŠç›¸åˆ‡çš„æƒ…å†µ
+		//½áÊø ÌÖÂÛÃ»ÓĞ½»µãÒÔ¼°ÏàÇĞµÄÇé¿ö
 
 
-		//å¼€å§‹ è®¨è®ºä¸€èˆ¬çš„æƒ…å†µ
+		//¿ªÊ¼ ÌÖÂÛÒ»°ãµÄÇé¿ö
 		else if (point_Array.size()>1)
 		{
-			EnterCriticalSection(&critical_circle_number[1]);  
-			circle_inter_boun++;
-			LeaveCriticalSection(&critical_circle_number[1]);
+			omp_set_lock(&critical_circle_number[1]);  
+			circle_inter_bound++;
+			omp_unset_lock(&critical_circle_number[1]);
 
 			vector<XPoint>::iterator pos;
-			point_Array.push_back(point_Array[0]);									//ä¸ºäº†ä¾¿äºè®¨è®ºå’Œè®¡ç®—ï¼Œåœ¨æ•´ä¸ªäº¤ç‚¹å®¹å™¨çš„æœ€ååŠ å…¥ç¬¬ä¸€ä¸ªäº¤ç‚¹
+			point_Array.push_back(point_Array[0]);									//ÎªÁË±ãÓÚÌÖÂÛºÍ¼ÆËã£¬ÔÚÕû¸ö½»µãÈİÆ÷µÄ×îºó¼ÓÈëµÚÒ»¸ö½»µã
 			
-			/*å¼€å§‹ å¤„ç†å½“åœ†åˆšå¥½è¿‡å¤šè¾¹å½¢çš„æŸä¸€ç‚¹æ—¶ï¼Œ
-			  ä¼šå‡ºç°è¯¥ç‚¹è¢«è®°å½•ä¸¤æ¬¡çš„æƒ…å†µï¼Œæ•…éœ€è¦è¿›è¡Œæ’é™¤*/
+			/*¿ªÊ¼ ´¦Àíµ±Ô²¸ÕºÃ¹ı¶à±ßĞÎµÄÄ³Ò»µãÊ±£¬
+			  »á³öÏÖ¸Ãµã±»¼ÇÂ¼Á½´ÎµÄÇé¿ö£¬¹ÊĞèÒª½øĞĞÅÅ³ı*/
 			for (pos = point_Array.begin()+1; pos != point_Array.end(); pos++)
 			{
 				if (abs((*pos).x -(*(pos-1)).x)<0.1 
@@ -1116,15 +1228,15 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 					pos--;
 				}
 			}
-			/*ç»“æŸ å¤„ç†å½“åœ†åˆšå¥½è¿‡å¤šè¾¹å½¢çš„æŸä¸€ç‚¹æ—¶ï¼Œ
-			  ä¼šå‡ºç°è¯¥ç‚¹è¢«è®°å½•ä¸¤æ¬¡çš„æƒ…å†µï¼Œæ•…éœ€è¦è¿›è¡Œæ’é™¤*/
+			/*½áÊø ´¦Àíµ±Ô²¸ÕºÃ¹ı¶à±ßĞÎµÄÄ³Ò»µãÊ±£¬
+			  »á³öÏÖ¸Ãµã±»¼ÇÂ¼Á½´ÎµÄÇé¿ö£¬¹ÊĞèÒª½øĞĞÅÅ³ı*/
 
-			//å¼€å§‹ å¯¹äº¤ç‚¹å®¹å™¨ä¸­çš„æ¯ä¸€ä¸ªäº¤ç‚¹è¿›è¡Œéå†
+			//¿ªÊ¼ ¶Ô½»µãÈİÆ÷ÖĞµÄÃ¿Ò»¸ö½»µã½øĞĞ±éÀú
 			for (unsigned int j = 0; j < point_Array.size()-1; j++)
 			{
-				XPoint mid_point = getMiddlePoint(point_Array,i,j,circles);				//è·å¾—ä¸¤äº¤ç‚¹çš„åœ¨åœ†ä¸Šçš„ä¸­é—´ç‚¹
-				bool mid_in_bound = isPointInBoundary(mid_point);						//åˆ¤æ–­ä¸­é—´ç‚¹æ˜¯å¦åœ¨å¤šè¾¹å½¢çª—å£å†…
-				if(mid_in_bound == true)												//åœ¨å¤šè¾¹å½¢çª—å£å†…ï¼Œåˆ™ç”»æ•´ä¸ªåœ†å¼§ 
+				XPoint mid_point = getMiddlePoint(point_Array,i,j,circles);				//»ñµÃÁ½½»µãµÄÔÚÔ²ÉÏµÄÖĞ¼äµã
+				bool mid_in_bound = isPointInBoundary(mid_point);						//ÅĞ¶ÏÖĞ¼äµãÊÇ·ñÔÚ¶à±ßĞÎ´°¿ÚÄÚ
+				if(mid_in_bound == true)												//ÔÚ¶à±ßĞÎ´°¿ÚÄÚ£¬Ôò»­Õû¸öÔ²»¡ 
 				{				
 					int start_x = circles[i].center.x-circles[i].radius;
 					int start_y = circles[i].center.y-circles[i].radius;
@@ -1169,29 +1281,29 @@ void  forCircleRun(vector<Circle>& circles,Boundary& boundary,int threadNumber)
 						arc2draw.rect = rect;
 						arc2draw.start_point = tmp;
 						arc2draw.end_point = tmp2;
-						EnterCriticalSection(&critical_sections[threadNumber]);  
+						omp_set_lock(&critical_sections[threadNumber]);  
 						circles_to_draw[threadNumber].push_back(arc2draw);
-						LeaveCriticalSection(&critical_sections[threadNumber]); 
+						omp_unset_lock(&critical_sections[threadNumber]); 
 					}
 
 
 				}
 			}
-			//ç»“æŸ å¯¹äº¤ç‚¹å®¹å™¨ä¸­çš„æ¯ä¸€ä¸ªäº¤ç‚¹è¿›è¡Œéå†
+			//½áÊø ¶Ô½»µãÈİÆ÷ÖĞµÄÃ¿Ò»¸ö½»µã½øĞĞ±éÀú
 
 		}
-		//ç»“æŸ è®¨è®ºä¸€èˆ¬çš„æƒ…å†µ
+		//½áÊø ÌÖÂÛÒ»°ãµÄÇé¿ö
 
 	}
 }
 
 
 /*
-*åŠŸèƒ½ï¼šç»™å‡ºåœ†çš„åœ†ç‚¹çš„åæ ‡å’Œåœ†ä¸ŠæŸç‚¹çš„åæ ‡ä»¥åŠåŠå¾„çš„é•¿åº¦ï¼Œ
-*      é€šè¿‡åœ†çš„å‚æ•°æ–¹ç¨‹ï¼Œè·å¾—è¯¥ç‚¹çš„è§’åº¦
-*æ€è·¯ï¼šé€šè¿‡ä¸‰è§’å‡½æ•°å³å¯æ±‚å¾—ã€‚
+*¹¦ÄÜ£º¸ø³öÔ²µÄÔ²µãµÄ×ø±êºÍÔ²ÉÏÄ³µãµÄ×ø±êÒÔ¼°°ë¾¶µÄ³¤¶È£¬
+*      Í¨¹ıÔ²µÄ²ÎÊı·½³Ì£¬»ñµÃ¸ÃµãµÄ½Ç¶È
+*Ë¼Â·£ºÍ¨¹ıÈı½Çº¯Êı¼´¿ÉÇóµÃ¡£
 */
-double getAngle(double x1,double x2,double y1,double y2,double r)
+double CDemo_ClipView_VCDlg::getAngle(double x1,double x2,double y1,double y2,double r)
 {
 	double cos = (double)(x1-x2)/(double)r;
 	double sin = (double)(y1-y2)/(double)r;
@@ -1209,11 +1321,11 @@ double getAngle(double x1,double x2,double y1,double y2,double r)
 
 
 /*
-*åŠŸèƒ½ï¼šè·å¾—å¤šè¾¹å½¢çª—å£ä¸åœ†çš„ç›¸é‚»çš„ä¸¤ä¸ªäº¤ç‚¹åœ¨åœ†ä¸Šçš„çš„ä¸­é—´ç‚¹ã€‚
-*æ€è·¯ï¼šé€šè¿‡åœ†çš„å‚æ•°æ–¹ç¨‹ï¼Œå°†ä¸¤äº¤ç‚¹çš„åæ ‡ä»£å…¥æ–¹ç¨‹ä¸­ï¼Œæ±‚å¾—ä¸¤äº¤ç‚¹å„è‡ªçš„è§’åº¦ï¼Œï¼ˆä½¿ç”¨getAngleå‡½æ•°ï¼‰
-*	   ç„¶åé€šè¿‡ä¸‰è§’è®¡ç®—ï¼Œè·å¾—ä¸­é—´ç‚¹çš„è§’åº¦ï¼Œå°†æ­¤è§’åº¦ä»£å…¥åœ†çš„å‚æ•°æ–¹ç¨‹ï¼Œå°±å¯ä»¥æ±‚å¾—ä¸­é—´ç‚¹çš„åæ ‡
+*¹¦ÄÜ£º»ñµÃ¶à±ßĞÎ´°¿ÚÓëÔ²µÄÏàÁÚµÄÁ½¸ö½»µãÔÚÔ²ÉÏµÄµÄÖĞ¼äµã¡£
+*Ë¼Â·£ºÍ¨¹ıÔ²µÄ²ÎÊı·½³Ì£¬½«Á½½»µãµÄ×ø±ê´úÈë·½³ÌÖĞ£¬ÇóµÃÁ½½»µã¸÷×ÔµÄ½Ç¶È£¬£¨Ê¹ÓÃgetAngleº¯Êı£©
+*	   È»ºóÍ¨¹ıÈı½Ç¼ÆËã£¬»ñµÃÖĞ¼äµãµÄ½Ç¶È£¬½«´Ë½Ç¶È´úÈëÔ²µÄ²ÎÊı·½³Ì£¬¾Í¿ÉÒÔÇóµÃÖĞ¼äµãµÄ×ø±ê
 */
-XPoint getMiddlePoint(vector<XPoint>& point_Array,int i,int j,vector<Circle>& circles2)
+XPoint CDemo_ClipView_VCDlg::getMiddlePoint(vector<XPoint>& point_Array,int i,int j,vector<Circle>& circles2)
 {
 	double a1 = getAngle(point_Array[j].x,circles2[i].center.x,point_Array[j].y,circles2[i].center.y,circles2[i].radius);
 	double a2 = getAngle(point_Array[j+1].x,circles2[i].center.x,point_Array[j+1].y,circles2[i].center.y,circles2[i].radius);
@@ -1270,18 +1382,18 @@ XPoint getMiddlePoint(vector<XPoint>& point_Array,int i,int j,vector<Circle>& ci
 
 
 /*
-*å‡½æ•°é‡è½½
-*åŠŸèƒ½ï¼šåˆ¤æ–­ç‚¹æ˜¯å¦åœ¨å¤šè¾¹å½¢çª—å£å†…
-*æ€è·¯ï¼šæ ¹æ®äº¤ç‚¹æ³•æ±‚å¾—æŸç‚¹æ˜¯å¦åœ¨å¤šè¾¹å½¢çš„çª—å£å†…éƒ¨ã€‚
-*      é€šè¿‡è¯¥ç‚¹å–å¹³è¡Œäºyè½´çš„ç›´çº¿lï¼Œ
-*	   å…ˆåˆ¤æ–­ç›´çº¿æ˜¯å¦ç©¿è¿‡å¤šè¾¹å½¢çª—å£çš„ç‚¹ã€‚
-*      è‹¥ç©¿è¿‡ï¼Œåˆ¤æ–­ä¸è¯¥ç‚¹ç›¸é‚»çš„ä¸¤è¾¹æ˜¯å¦åœ¨lçš„ä¸¤è¾¹ï¼Œ
-*	   è‹¥åœ¨ï¼Œåˆ™äº¤ç‚¹æ•°åŠ ä¸€ï¼Œè‹¥åœ¨åŒä¸€è¾¹ï¼Œåˆ™äº¤ç‚¹æ•°åŠ äºŒã€‚
-*	   ç„¶ååˆ¤æ–­å¤šè¾¹å½¢çª—å£çš„æ¯ä¸€æ¡è¾¹æ˜¯å¦ä¸ç›´çº¿læœ‰äº¤ç‚¹ï¼Œ
-*	   è‹¥æœ‰ï¼Œåˆ™äº¤ç‚¹æ•°åŠ ä¸€ã€‚æœ€åè‹¥äº¤ç‚¹æ•°ä¸ºå¶æ•°ï¼Œ
-*      åˆ™è¯¥ç‚¹åœ¨å¤šè¾¹å½¢çª—å£å¤–éƒ¨ï¼Œè‹¥ä¸ºå¥‡æ•°ï¼Œåˆ™è¯¥ç‚¹åœ¨å¤šè¾¹å½¢çª—å£å†…éƒ¨ã€‚
+*º¯ÊıÖØÔØ
+*¹¦ÄÜ£ºÅĞ¶ÏµãÊÇ·ñÔÚ¶à±ßĞÎ´°¿ÚÄÚ
+*Ë¼Â·£º¸ù¾İ½»µã·¨ÇóµÃÄ³µãÊÇ·ñÔÚ¶à±ßĞÎµÄ´°¿ÚÄÚ²¿¡£
+*      Í¨¹ı¸ÃµãÈ¡Æ½ĞĞÓÚyÖáµÄÖ±Ïßl£¬
+*	   ÏÈÅĞ¶ÏÖ±ÏßÊÇ·ñ´©¹ı¶à±ßĞÎ´°¿ÚµÄµã¡£
+*      Èô´©¹ı£¬ÅĞ¶ÏÓë¸ÃµãÏàÁÚµÄÁ½±ßÊÇ·ñÔÚlµÄÁ½±ß£¬
+*	   ÈôÔÚ£¬Ôò½»µãÊı¼ÓÒ»£¬ÈôÔÚÍ¬Ò»±ß£¬Ôò½»µãÊı¼Ó¶ş¡£
+*	   È»ºóÅĞ¶Ï¶à±ßĞÎ´°¿ÚµÄÃ¿Ò»Ìõ±ßÊÇ·ñÓëÖ±ÏßlÓĞ½»µã£¬
+*	   ÈôÓĞ£¬Ôò½»µãÊı¼ÓÒ»¡£×îºóÈô½»µãÊıÎªÅ¼Êı£¬
+*      Ôò¸ÃµãÔÚ¶à±ßĞÎ´°¿ÚÍâ²¿£¬ÈôÎªÆæÊı£¬Ôò¸ÃµãÔÚ¶à±ßĞÎ´°¿ÚÄÚ²¿¡£
 */
-bool isPointInBoundary(CPoint& point)
+bool CDemo_ClipView_VCDlg::isPointInBoundary(CPoint& point)
 {
 	XPoint xp;
 	xp.x=point.x;
@@ -1292,41 +1404,41 @@ bool isPointInBoundary(CPoint& point)
 
 
 /*
-*åŠŸèƒ½ï¼šåˆ¤æ–­ç‚¹æ˜¯å¦åœ¨å¤šè¾¹å½¢çª—å£å†…
-*æ€è·¯ï¼šæ ¹æ®äº¤ç‚¹æ³•æ±‚å¾—æŸç‚¹æ˜¯å¦åœ¨å¤šè¾¹å½¢çš„çª—å£å†…éƒ¨ã€‚é€šè¿‡è¯¥ç‚¹å–å¹³è¡Œäºyè½´çš„ç›´çº¿Lï¼Œ
-*	   å…ˆåˆ¤æ–­ç›´çº¿æ˜¯å¦ç©¿è¿‡å¤šè¾¹å½¢çª—å£çš„ç‚¹ã€‚è‹¥ç©¿è¿‡ï¼Œåˆ¤æ–­ä¸è¯¥ç‚¹ç›¸é‚»çš„ä¸¤ç‚¹p1ï¼Œp2æ˜¯å¦åœ¨Lçš„ä¸¤è¾¹ï¼Œ
-*	   è‹¥åœ¨ï¼Œåˆ™äº¤ç‚¹æ•°åŠ ä¸€ï¼Œè‹¥åœ¨åŒä¸€è¾¹ï¼Œåˆ™äº¤ç‚¹æ•°åŠ äºŒï¼Œè‹¥ä¸¤ç‚¹ä¸­ç‰¹å®šæ–¹å‘çš„ä¸€ç‚¹p1ä¹Ÿåœ¨ç›´çº¿Lä¸Šï¼Œé‚£ä¹ˆå–è¯¥æ–¹å‘çš„ä¸‹ä¸€ç‚¹p3ï¼Œ
-*      è‹¥p3å’Œp2åœ¨ç›´çº¿Lçš„ä¸¤è¾¹ï¼Œåˆ™äº¤ç‚¹æ•°åŠ ä¸€ï¼Œå¦åˆ™ä¸åŠ ï¼ˆè¿™ä¸ªæ–¹æ³•å¿…é¡»ç¡®ä¿å¤šè¾¹å½¢æ²¡æœ‰è¿ç»­ä¸‰ç‚¹å…±çº¿ï¼‰ã€‚
-*	   ç„¶ååˆ¤æ–­å¤šè¾¹å½¢çª—å£çš„æ¯ä¸€æ¡è¾¹æ˜¯å¦ä¸ç›´çº¿læœ‰äº¤ç‚¹ï¼ˆä¸è€ƒè™‘å¤šè¾¹å½¢çš„ç«¯ç‚¹ï¼‰ï¼Œè‹¥æœ‰ï¼Œåˆ™äº¤ç‚¹æ•°åŠ ä¸€ã€‚
-*	   æœ€åè‹¥äº¤ç‚¹æ•°ä¸ºå¶æ•°ï¼Œåˆ™è¯¥ç‚¹åœ¨å¤šè¾¹å½¢çª—å£å¤–éƒ¨ï¼Œè‹¥ä¸ºå¥‡æ•°ï¼Œåˆ™è¯¥ç‚¹åœ¨å¤šè¾¹å½¢çª—å£å†…éƒ¨ã€‚ 
+*¹¦ÄÜ£ºÅĞ¶ÏµãÊÇ·ñÔÚ¶à±ßĞÎ´°¿ÚÄÚ
+*Ë¼Â·£º¸ù¾İ½»µã·¨ÇóµÃÄ³µãÊÇ·ñÔÚ¶à±ßĞÎµÄ´°¿ÚÄÚ²¿¡£Í¨¹ı¸ÃµãÈ¡Æ½ĞĞÓÚyÖáµÄÖ±ÏßL£¬
+*	   ÏÈÅĞ¶ÏÖ±ÏßÊÇ·ñ´©¹ı¶à±ßĞÎ´°¿ÚµÄµã¡£Èô´©¹ı£¬ÅĞ¶ÏÓë¸ÃµãÏàÁÚµÄÁ½µãp1£¬p2ÊÇ·ñÔÚLµÄÁ½±ß£¬
+*	   ÈôÔÚ£¬Ôò½»µãÊı¼ÓÒ»£¬ÈôÔÚÍ¬Ò»±ß£¬Ôò½»µãÊı¼Ó¶ş£¬ÈôÁ½µãÖĞÌØ¶¨·½ÏòµÄÒ»µãp1Ò²ÔÚÖ±ÏßLÉÏ£¬ÄÇÃ´È¡¸Ã·½ÏòµÄÏÂÒ»µãp3£¬
+*      Èôp3ºÍp2ÔÚÖ±ÏßLµÄÁ½±ß£¬Ôò½»µãÊı¼ÓÒ»£¬·ñÔò²»¼Ó£¨Õâ¸ö·½·¨±ØĞëÈ·±£¶à±ßĞÎÃ»ÓĞÁ¬ĞøÈıµã¹²Ïß£©¡£
+*	   È»ºóÅĞ¶Ï¶à±ßĞÎ´°¿ÚµÄÃ¿Ò»Ìõ±ßÊÇ·ñÓëÖ±ÏßlÓĞ½»µã£¨²»¿¼ÂÇ¶à±ßĞÎµÄ¶Ëµã£©£¬ÈôÓĞ£¬Ôò½»µãÊı¼ÓÒ»¡£
+*	   ×îºóÈô½»µãÊıÎªÅ¼Êı£¬Ôò¸ÃµãÔÚ¶à±ßĞÎ´°¿ÚÍâ²¿£¬ÈôÎªÆæÊı£¬Ôò¸ÃµãÔÚ¶à±ßĞÎ´°¿ÚÄÚ²¿¡£ 
 */
-bool isPointInBoundary(XPoint& point)
+bool CDemo_ClipView_VCDlg::isPointInBoundary(XPoint& point)
 {
 
-	int interNum = 0;												//äº¤ç‚¹æ•°
-	long x1 = point.x;												//ï¼ˆx1ï¼Œy1ï¼‰æ˜¯åˆ¤æ–­çš„ç‚¹ï¼Œï¼ˆx2ï¼Œy2ï¼‰æ˜¯è¿‡ï¼ˆx1ï¼Œy1ï¼‰å¹³è¡Œäºyè½´çš„æ— ç©·å°çš„ç‚¹
+	int interNum = 0;												//½»µãÊı
+	long x1 = point.x;												//£¨x1£¬y1£©ÊÇÅĞ¶ÏµÄµã£¬£¨x2£¬y2£©ÊÇ¹ı£¨x1£¬y1£©Æ½ĞĞÓÚyÖáµÄÎŞÇîĞ¡µÄµã
 	long y1 = point.y;
 	long x2 = x1;
 	long y2 = 0;
 	for (unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
-		//å¼€å§‹ å¤„ç†å¹³è¡Œäºyè½´çš„ç›´çº¿Lè¿‡å¤šè¾¹å½¢çš„ç«¯ç‚¹çš„æƒ…å†µ
+		//¿ªÊ¼ ´¦ÀíÆ½ĞĞÓÚyÖáµÄÖ±ÏßL¹ı¶à±ßĞÎµÄ¶ËµãµÄÇé¿ö
 		if ((abs(boundary.vertexs[i].x-point.x)<
-			DOUBLE_DEGREE)&&(boundary.vertexs[i].y<point.y))		//å¯¹è¾¹ç•Œç‚¹åœ¨çº¿ä¸Šå’Œè¿ç»­ä¸¤è¾¹ç•Œç‚¹åœ¨çº¿ä¸Šçš„æƒ…å†µè¿›è¡Œè®¨è®º
+			DOUBLE_DEGREE)&&(boundary.vertexs[i].y<point.y))		//¶Ô±ß½çµãÔÚÏßÉÏºÍÁ¬ĞøÁ½±ß½çµãÔÚÏßÉÏµÄÇé¿ö½øĞĞÌÖÂÛ
 		{
-			if (i==(boundary.vertexs.size()-1))						//å½“è¯¥ç‚¹æ˜¯å¤šè¾¹å½¢çš„æœ€åä¸€ä¸ªç‚¹çš„æ—¶å€™
+			if (i==(boundary.vertexs.size()-1))						//µ±¸ÃµãÊÇ¶à±ßĞÎµÄ×îºóÒ»¸öµãµÄÊ±ºò
 			{
-				double between1 =boundary.vertexs[i-1].x-point.x;	//å®ƒçš„ä¸Šä¸€ä¸ªç‚¹
-				double between2 =boundary.vertexs[1].x-point.x;		//å®ƒçš„ä¸‹ä¸€ä¸ªç‚¹
-				if (abs(between2)<DOUBLE_DEGREE)					//å½“å®ƒçš„ä¸‹ä¸€ä¸ªç‚¹ä¹Ÿæ˜¯åœ¨ç›´çº¿Lä¸Šï¼Œå¿½ç•¥
+				double between1 =boundary.vertexs[i-1].x-point.x;	//ËüµÄÉÏÒ»¸öµã
+				double between2 =boundary.vertexs[1].x-point.x;		//ËüµÄÏÂÒ»¸öµã
+				if (abs(between2)<DOUBLE_DEGREE)					//µ±ËüµÄÏÂÒ»¸öµãÒ²ÊÇÔÚÖ±ÏßLÉÏ£¬ºöÂÔ
 				{
 					continue;
 				}
-				if(abs(between1)<DOUBLE_DEGREE)						//å½“å®ƒçš„ä¸Šä¸€ä¸ªç‚¹ä¹Ÿæ˜¯åœ¨ç›´çº¿Lä¸Šï¼Œè®¡ç®—è¯¥æ–¹å‘ä¸Šçš„ä¸‹ä¸€ä¸ªç‚¹
+				if(abs(between1)<DOUBLE_DEGREE)						//µ±ËüµÄÉÏÒ»¸öµãÒ²ÊÇÔÚÖ±ÏßLÉÏ£¬¼ÆËã¸Ã·½ÏòÉÏµÄÏÂÒ»¸öµã
 				{
 					double between3 =boundary.vertexs[i-2].x-point.x;
 					if ((between3>0&&between2<0)||
-						(between3<0&&between2>0))					//p3å’Œp2åœ¨ç›´çº¿Lçš„ä¸¤è¾¹ï¼Œåˆ™äº¤ç‚¹æ•°åŠ ä¸€
+						(between3<0&&between2>0))					//p3ºÍp2ÔÚÖ±ÏßLµÄÁ½±ß£¬Ôò½»µãÊı¼ÓÒ»
 					{
 						interNum++;
 					}
@@ -1334,13 +1446,13 @@ bool isPointInBoundary(XPoint& point)
 				}
 
 				if ((between1>0&&between2<0)||
-					(between1<0&&between2>0))						//åˆ¤æ–­ä¸è¯¥ç‚¹ç›¸é‚»çš„ä¸¤ç‚¹p1ï¼Œp2æ˜¯å¦åœ¨Lçš„ä¸¤è¾¹ï¼Œè‹¥åœ¨ï¼Œåˆ™äº¤ç‚¹æ•°åŠ ä¸€
+					(between1<0&&between2>0))						//ÅĞ¶ÏÓë¸ÃµãÏàÁÚµÄÁ½µãp1£¬p2ÊÇ·ñÔÚLµÄÁ½±ß£¬ÈôÔÚ£¬Ôò½»µãÊı¼ÓÒ»
 				{
 					interNum++;
 				}
 
 			}
-			else if (i==(boundary.vertexs.size()-2))				//å½“è¯¥ç‚¹æ˜¯å¤šè¾¹å½¢çš„å€’æ•°ç¬¬äºŒä¸ªç‚¹çš„æ—¶å€™
+			else if (i==(boundary.vertexs.size()-2))				//µ±¸ÃµãÊÇ¶à±ßĞÎµÄµ¹ÊıµÚ¶ş¸öµãµÄÊ±ºò
 			{
 				double between1 =boundary.vertexs[i-1].x-point.x;
 				double between2 =boundary.vertexs[i+1].x-point.x;
@@ -1366,7 +1478,7 @@ bool isPointInBoundary(XPoint& point)
 				}
 
 			}
-			else if (i==1)											//å½“è¯¥ç‚¹æ˜¯å¤šè¾¹å½¢çš„ç¬¬äºŒä¸ªç‚¹çš„æ—¶å€™
+			else if (i==1)											//µ±¸ÃµãÊÇ¶à±ßĞÎµÄµÚ¶ş¸öµãµÄÊ±ºò
 			{
 				double between1 =boundary.vertexs[0].x-point.x;
 				double between2 =boundary.vertexs[2].x-point.x;
@@ -1392,7 +1504,7 @@ bool isPointInBoundary(XPoint& point)
 				}
 
 			}
-			else													//å½“è¯¥ç‚¹åœ¨å¤šè¾¹å½¢çš„ç‚¹çš„ä¸­é—´ä½ç½®æ—¶
+			else													//µ±¸ÃµãÔÚ¶à±ßĞÎµÄµãµÄÖĞ¼äÎ»ÖÃÊ±
 			{
 				double between1 =boundary.vertexs[i-1].x-point.x;
 				double between2 =boundary.vertexs[i+1].x-point.x;
@@ -1418,9 +1530,9 @@ bool isPointInBoundary(XPoint& point)
 			}
 		}
 	}
-	//ç»“æŸ å¤„ç†å¹³è¡Œäºyè½´çš„ç›´çº¿Lè¿‡å¤šè¾¹å½¢çš„ç«¯ç‚¹çš„æƒ…å†µ
+	//½áÊø ´¦ÀíÆ½ĞĞÓÚyÖáµÄÖ±ÏßL¹ı¶à±ßĞÎµÄ¶ËµãµÄÇé¿ö
 
-	//å¼€å§‹ å¤„ç†å¹³è¡Œäºyè½´çš„ç›´çº¿Lä¸å¤šå˜å½¢ç›¸äº¤çš„æƒ…å†µ
+	//¿ªÊ¼ ´¦ÀíÆ½ĞĞÓÚyÖáµÄÖ±ÏßLÓë¶à±äĞÎÏà½»µÄÇé¿ö
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
 		double between1 =boundary.vertexs[i].x-point.x;
@@ -1447,26 +1559,26 @@ bool isPointInBoundary(XPoint& point)
 
 		}
 	}
-	//ç»“æŸ å¤„ç†å¹³è¡Œäºyè½´çš„ç›´çº¿Lä¸å¤šå˜å½¢ç›¸äº¤çš„æƒ…å†µ
+	//½áÊø ´¦ÀíÆ½ĞĞÓÚyÖáµÄÖ±ÏßLÓë¶à±äĞÎÏà½»µÄÇé¿ö
 
 	
 	if(interNum%2!=0)
 	{
-		return true;												//äº¤ç‚¹ä¸ºå¥‡æ•°ï¼Œåˆ™ç‚¹åœ¨å¤šè¾¹å½¢å†…
+		return true;												//½»µãÎªÆæÊı£¬ÔòµãÔÚ¶à±ßĞÎÄÚ
 	}
 	else
 	{
-		return false;												//äº¤ç‚¹ä¸ºå¶æ•°ï¼Œåˆ™ç‚¹åœ¨å¤šè¾¹å½¢å¤–
+		return false;												//½»µãÎªÅ¼Êı£¬ÔòµãÔÚ¶à±ßĞÎÍâ
 	}
 
 }
 
 
 /*
-*åŠŸèƒ½ï¼šé€šè¿‡ç›´çº¿å‚æ•°æ–¹ç¨‹çš„å‚æ•°ï¼Œç›´çº¿çš„ä¸¤äº¤ç‚¹çš„åæ ‡ï¼Œè·å¾—è¯¥ç›´çº¿ä¸Šçš„ä¸€ä¸ªç‚¹ã€‚
-*æ€è·¯ï¼šé€šè¿‡ç›´çº¿çš„å‚æ•°æ–¹ç¨‹å¯ä»¥æ±‚å¾—ã€‚
+*¹¦ÄÜ£ºÍ¨¹ıÖ±Ïß²ÎÊı·½³ÌµÄ²ÎÊı£¬Ö±ÏßµÄÁ½½»µãµÄ×ø±ê£¬»ñµÃ¸ÃÖ±ÏßÉÏµÄÒ»¸öµã¡£
+*Ë¼Â·£ºÍ¨¹ıÖ±ÏßµÄ²ÎÊı·½³Ì¿ÉÒÔÇóµÃ¡£
 */
-struct XPoint getInterpoint(double t,int x1,int x2,int y1,int y2)
+struct XPoint CDemo_ClipView_VCDlg::getInterpoint(double t,int x1,int x2,int y1,int y2)
 {
 	double x = x1+(x2-x1)*t;
 	double y = y1+(y2-y1)*t;
@@ -1479,15 +1591,15 @@ struct XPoint getInterpoint(double t,int x1,int x2,int y1,int y2)
 
 
 /*
-*åŠŸèƒ½ï¼šè·å¾—åœ†ä¸å¤šè¾¹å½¢çš„äº¤ç‚¹çš„é›†åˆï¼Œä¸”äº¤ç‚¹é¡ºåºæŒ‰ç…§é€†æ—¶é’ˆçš„æ–¹å‘å­˜å…¥point_Arrayçš„å®¹å™¨ä¸­
-*æ€è·¯ï¼šé€†æ—¶é’ˆéå†å¤šè¾¹å½¢çš„æ¯ä¸€æ¡è¾¹ï¼Œæ ¹æ®ç›´çº¿åˆ°åœ†å¿ƒçš„è·ç¦»åˆ¤æ–­æ˜¯å¦æœ‰äº¤ç‚¹ï¼Œè‹¥æœ‰äº¤ç‚¹ï¼Œå°†ç›´çº¿
-*	   ä¸Šçš„ç‚¹çš„å‚æ•°æ–¹ç¨‹çš„å½¢å¼ä»£å…¥åœ†çš„è¡¨è¾¾å¼ï¼ŒåŒ–ç®€å¾—åˆ°A*t^2+B*t+C=0çš„å½¢å¼ï¼ˆtæ˜¯ç›´çº¿å‚æ•°æ–¹ç¨‹ä¸­çš„å‚æ•°ï¼Œä»‹äº0-1ï¼‰
-*	   æ±‚å‡ºA,B,Cçš„å€¼ï¼Œè‹¥ B^2-4*A*C=0,åˆ™åªæœ‰ä¸€ä¸ªè§£ï¼Œä¸”è§£ä¸º(-B)/(2*A)ï¼Œ
-*	   è‹¥B^2-4*A*C>0æœ‰ä¸¤ä¸ªè§£,ä¸€ä¸ªè§£ä¸º((-B)+sqrt(B^2-4*A*C))/(2*A),å¦ä¸€ä¸ªè§£ä¸º((-B)-sqrt(B^2-4*A*C))/(2*A)
-*	   ç„¶åï¼Œå¯¹è§£çš„å€¼è¿›è¡Œåˆ¤æ–­ï¼Œè‹¥è§£å¤§äºç­‰äº0ï¼Œè§£å°äºç­‰äº1ï¼Œåˆ™æ˜¯äº¤ç‚¹ï¼Œå¦åˆ™èˆå»ã€‚å°†è§£å€¼ä»£å…¥å‚æ•°æ–¹ç¨‹å³å¯æ±‚å¾—äº¤ç‚¹ã€‚
-*	   æœ€åï¼Œå¯¹äº¤ç‚¹çš„é¡ºåºè¿›è¡Œåˆ¤æ–­ï¼Œè§£å€¼å°çš„å€¼å…ˆå­˜å…¥point_Arrayå®¹å™¨ã€‚
+*¹¦ÄÜ£º»ñµÃÔ²Óë¶à±ßĞÎµÄ½»µãµÄ¼¯ºÏ£¬ÇÒ½»µãË³Ğò°´ÕÕÄæÊ±ÕëµÄ·½Ïò´æÈëpoint_ArrayµÄÈİÆ÷ÖĞ
+*Ë¼Â·£ºÄæÊ±Õë±éÀú¶à±ßĞÎµÄÃ¿Ò»Ìõ±ß£¬¸ù¾İÖ±Ïßµ½Ô²ĞÄµÄ¾àÀëÅĞ¶ÏÊÇ·ñÓĞ½»µã£¬ÈôÓĞ½»µã£¬½«Ö±Ïß
+*	   ÉÏµÄµãµÄ²ÎÊı·½³ÌµÄĞÎÊ½´úÈëÔ²µÄ±í´ïÊ½£¬»¯¼òµÃµ½A*t^2+B*t+C=0µÄĞÎÊ½£¨tÊÇÖ±Ïß²ÎÊı·½³ÌÖĞµÄ²ÎÊı£¬½éÓÚ0-1£©
+*	   Çó³öA,B,CµÄÖµ£¬Èô B^2-4*A*C=0,ÔòÖ»ÓĞÒ»¸ö½â£¬ÇÒ½âÎª(-B)/(2*A)£¬
+*	   ÈôB^2-4*A*C>0ÓĞÁ½¸ö½â,Ò»¸ö½âÎª((-B)+sqrt(B^2-4*A*C))/(2*A),ÁíÒ»¸ö½âÎª((-B)-sqrt(B^2-4*A*C))/(2*A)
+*	   È»ºó£¬¶Ô½âµÄÖµ½øĞĞÅĞ¶Ï£¬Èô½â´óÓÚµÈÓÚ0£¬½âĞ¡ÓÚµÈÓÚ1£¬ÔòÊÇ½»µã£¬·ñÔòÉáÈ¥¡£½«½âÖµ´úÈë²ÎÊı·½³Ì¼´¿ÉÇóµÃ½»µã¡£
+*	   ×îºó£¬¶Ô½»µãµÄË³Ğò½øĞĞÅĞ¶Ï£¬½âÖµĞ¡µÄÖµÏÈ´æÈëpoint_ArrayÈİÆ÷¡£
 */
-void getInterpointArray(vector<XPoint>& point_Array,int circle_num,vector<Circle>& circle2)
+void CDemo_ClipView_VCDlg::getInterpointArray(vector<XPoint>& point_Array,int circle_num,vector<Circle>& circle2)
 {
 	for(unsigned int i =(boundary.vertexs.size()-1);i>0;i--)
 	{
@@ -1562,7 +1674,7 @@ void getInterpointArray(vector<XPoint>& point_Array,int circle_num,vector<Circle
 	if (point_Array.size()>2)
 	{
 
-		//å¼€å§‹ å°†æ‰€æœ‰çš„äº¤ç‚¹æŒ‰ç…§é¡ºæ—¶é’ˆæ’åº
+		//¿ªÊ¼ ½«ËùÓĞµÄ½»µã°´ÕÕË³Ê±ÕëÅÅĞò
 		vector<XPoint> y_up_0;
 		vector<XPoint> y_down_0;
 		for (int i = 0; i < point_Array.size(); i++)
@@ -1625,13 +1737,13 @@ void getInterpointArray(vector<XPoint>& point_Array,int circle_num,vector<Circle
 				point_Array[y_down_0.size()+i] = y_up_0[i];
 			}
 		}
-		//ç»“æŸ å°†æ‰€æœ‰çš„äº¤ç‚¹æŒ‰ç…§é¡ºæ—¶é’ˆæ’åº
+		//½áÊø ½«ËùÓĞµÄ½»µã°´ÕÕË³Ê±ÕëÅÅĞò
 
 	}
 
 }
 
-/*----------------------------------------------- ä»»æ„å¤šè¾¹å½¢åœ†è£å‰ªç®—æ³• ends----------------------------------------------------*/
+/*----------------------------------------------- ÈÎÒâ¶à±ßĞÎÔ²²Ã¼ôËã·¨ ends----------------------------------------------------*/
 
 
 BOOL CDemo_ClipView_VCDlg::XmlNodeToPoint(pugi::xml_node node, CPoint& piont)
@@ -1653,7 +1765,7 @@ BOOL CDemo_ClipView_VCDlg::XmlNodeToPoint(pugi::xml_node node, CPoint& piont)
 		}
 		else if (count == 2)
 		{
-			piont.y = CANVAS_HEIGHT - coord; //è°ƒæ•´CADä¸çª—å£æ˜¾ç¤ºçš„åæ ‡ç³»ä¸€è‡´
+			piont.y = CANVAS_HEIGHT - coord; //µ÷ÕûCADÓë´°¿ÚÏÔÊ¾µÄ×ø±êÏµÒ»ÖÂ
 		}
 	}
 	if (count != 2)
@@ -1791,7 +1903,7 @@ void CDemo_ClipView_VCDlg::ClearTestCaseData()
 void CDemo_ClipView_VCDlg::BeginMonitor()
 {
 	m_btn_clip.EnableWindow(FALSE);
-	m_stc_drawing.SetWindowText("è£å‰ªä¸­...");
+	m_stc_drawing.SetWindowText("²Ã¼ôÖĞ...");
 	m_stc_info1.ShowWindow(SW_HIDE);
 	m_stc_info2.ShowWindow(SW_HIDE);
 	GetThreadIdList(beginTIdList);
@@ -1804,7 +1916,7 @@ void CDemo_ClipView_VCDlg::EndMonitor()
 	m_stc_drawing.ShowWindow(SW_HIDE);
 	m_stc_info1.ShowWindow(SW_SHOW);
 	CString strTime;
-	strTime.Format("å›¾å½¢è£å‰ªå®Œæ¯•ï¼Œè€—æ—¶ï¼š%.3lf ç§’ï¼", useTimeS);
+	strTime.Format("Í¼ĞÎ²Ã¼ôÍê±Ï£¬ºÄÊ±£º%.3lf Ãë£¡", useTimeS);
 	m_stc_info1.SetWindowText(strTime);
 	m_stc_info2.ShowWindow(SW_SHOW);
 	CList<int> endTIdList;
@@ -1814,7 +1926,7 @@ void CDemo_ClipView_VCDlg::EndMonitor()
 	{
 		int tId = endTIdList.GetAt(pos);
 		CString strId;
-		strId.Format(_T("%d"), tId);
+		strId.Format("%d", tId);
 		if (!beginTIdList.Find(tId))
 		{
 			HANDLE th = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tId);
@@ -1825,13 +1937,13 @@ void CDemo_ClipView_VCDlg::EndMonitor()
 				CloseHandle(th);
 				if (exitCode == STILL_ACTIVE)
 				{
-					MessageBox(_T("æ–°å»ºçº¿ç¨‹ä»åœ¨è¿è¡Œ:") + strId, _T("çº¿ç¨‹æ¶ˆæ¯"), MB_OK);
+					MessageBox(_T("ĞÂ½¨Ïß³ÌÈÔÔÚÔËĞĞ:") + strId, _T("Ïß³ÌÏûÏ¢"), MB_OK);
 					break;
 				}
 			}
 			else
 			{
-				MessageBox(_T("æ–°å»ºçº¿ç¨‹æ— æ³•è®¿é—®:") + strId, _T("çº¿ç¨‹æ¶ˆæ¯"), MB_OK);
+				MessageBox(_T("ĞÂ½¨Ïß³ÌÎŞ·¨·ÃÎÊ:") + strId, _T("Ïß³ÌÏûÏ¢"), MB_OK);
 				break;
 			}
 		}
@@ -1841,41 +1953,47 @@ void CDemo_ClipView_VCDlg::EndMonitor()
 void CDemo_ClipView_VCDlg::DrawTestCase(CString xmlPath, CString caseID)
 {
 	m_stc_drawing.ShowWindow(SW_SHOW);
-	m_stc_drawing.SetWindowText("å›¾å½¢ç»˜åˆ¶ä¸­...");
+	m_stc_drawing.SetWindowText("Í¼ĞÎ»æÖÆÖĞ...");
 	m_stc_info1.ShowWindow(SW_HIDE);
 	m_stc_info2.ShowWindow(SW_HIDE);
 	ClearTestCaseData();
 	if (!LoadTestCaseData(xmlPath, caseID))
 	{
-		MessageBox("è¯»å–æ•°æ®å¤±è´¥!","Demo_CliView_VC",MB_OK);
+		MessageBox("¶ÁÈ¡Êı¾İÊ§°Ü!","Demo_CliView_VC",MB_OK);
 		m_stc_drawing.SetWindowText("");
 		return;
 	}
-	
-	COLORREF clrLine = RGB(0,255,0);
-	vector<Line>::iterator iterLine = lines.begin();
-	for (;iterLine != lines.end(); iterLine++)
-	{
-		DrawLine(*iterLine, clrLine);
-	}
 
-	COLORREF clrCircle = RGB(0,0,255);
-	vector<Circle>::iterator iterCircle = circles.begin();
-	for (;iterCircle != circles.end(); iterCircle++)
+	if (TEST_DRAW_INITIAL)
 	{
-		DrawCircle(*iterCircle, clrCircle);
+
+		COLORREF clrLine = RGB(0,255,0);
+		vector<Line>::iterator iterLine = lines.begin();
+		for (;iterLine != lines.end(); iterLine++)
+		{
+			DrawLine(*iterLine, clrLine);
+		}
+
+		COLORREF clrCircle = RGB(0,0,255);
+		vector<Circle>::iterator iterCircle = circles.begin();
+		for (;iterCircle != circles.end(); iterCircle++)
+		{
+			DrawCircle(*iterCircle, clrCircle);
+		}
+
+		COLORREF clrBoundary = RGB(255,0,0);
+		DrawBoundary(boundary, clrBoundary);
+
 	}
-	COLORREF clrBoundary = RGB(255,0,0);
-	DrawBoundary(boundary, clrBoundary);
 
 	if (hasOutCanvasData)
 	{
-		m_stc_drawing.SetWindowText("å­˜åœ¨è¶…å‡ºè¾¹ç•Œæ•°æ®ï¼ï¼ï¼");
+		m_stc_drawing.SetWindowText("´æÔÚ³¬³ö±ß½çÊı¾İ£¡£¡£¡");
 	}
 	else
 	{
 		m_btn_clip.EnableWindow(TRUE);
-		m_stc_drawing.SetWindowText("å›¾å½¢ç»˜åˆ¶å®Œæ¯•ï¼");
+		m_stc_drawing.SetWindowText("Í¼ĞÎ»æÖÆÍê±Ï£¡");
 	}
 }
 
