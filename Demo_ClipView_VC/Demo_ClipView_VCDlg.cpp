@@ -8,8 +8,6 @@
 #include <TlHelp32.h>
 #include <stdlib.h>
 #include <crtdbg.h>
-#include <process.h>
-#include <omp.h>
 #include <stdio.h>
 using namespace std;
 
@@ -25,15 +23,28 @@ int CDemo_ClipView_VCDlg::line_overlap_bound = 0;
 
 vector<Line>CDemo_ClipView_VCDlg::lines_to_draw[MAX_THREAD_NUMBER];				//用于存储所有要画的线
 vector<_arc2draw>CDemo_ClipView_VCDlg::circles_to_draw[MAX_THREAD_NUMBER];		//用于存储所有要画的弧线
-vector<Line>CDemo_ClipView_VCDlg::lines_drawing;								//用于存储正在画的线
-vector<_arc2draw>CDemo_ClipView_VCDlg::circles_drawing;							//用于存储正在画的圆
+vector<Line>CDemo_ClipView_VCDlg::lines_drawing[MAX_THREAD_NUMBER];				//用于存储正在画的线
+vector<_arc2draw>CDemo_ClipView_VCDlg::circles_drawing[MAX_THREAD_NUMBER];		//用于存储正在画的圆
 vector<Line>CDemo_ClipView_VCDlg::lines;										//用于存储读取到的所有线
 vector<Circle>CDemo_ClipView_VCDlg::circles;									//用于存储读取到的所有圆
 Boundary CDemo_ClipView_VCDlg::boundary;	
-
+CDC CDemo_ClipView_VCDlg::MemDC[MAX_THREAD_NUMBER];								//多重缓冲区
+CBitmap CDemo_ClipView_VCDlg::MemBitmap[MAX_THREAD_NUMBER];
+bool CDemo_ClipView_VCDlg::computeFinished;										//标记计算是否完成
+CPen CDemo_ClipView_VCDlg::penLine;												//两种画笔
+CPen CDemo_ClipView_VCDlg::penCircle;	
 CRITICAL_SECTION CDemo_ClipView_VCDlg::critical_sections[MAX_THREAD_NUMBER];	//为每个线程分配一个临界区
-CRITICAL_SECTION CDemo_ClipView_VCDlg::critical_circle_number[2];				//为圆在多边形内部和相交个数计数创建临界区
-CRITICAL_SECTION CDemo_ClipView_VCDlg::critical_line_number[3];					//为线在多边形内部和相交个数计数创建临界区
+HANDLE CDemo_ClipView_VCDlg::hThread[MAX_THREAD_NUMBER];						//用于存储线程句柄
+HANDLE CDemo_ClipView_VCDlg::hThread_Paint[MAX_THREAD_NUMBER];					
+DWORD  dwThreadID[MAX_THREAD_NUMBER];											//用于存储线程的ID
+DWORD  dwPaintThreadID[MAX_THREAD_NUMBER];										
+
+int CDemo_ClipView_VCDlg::THREAD_NUMBER;										//计算线程数
+int CDemo_ClipView_VCDlg::PAINT_THREAD_NUMBER;									//绘图线程数
+
+int CDemo_ClipView_VCDlg::circle_number[2][MAX_THREAD_NUMBER];					//为各类圆在每个线程中统计的数目
+int CDemo_ClipView_VCDlg::line_number[3][MAX_THREAD_NUMBER];					//为各类线在每个线程中统计的数目
+
 
 bool CDemo_ClipView_VCDlg::isConvexPoly;										//多边形的凹凸性，以选择不同的算法
 vector<BOOL>CDemo_ClipView_VCDlg::convexPoint;									//多边形的点的凹凸性，true为凸点
@@ -234,7 +245,9 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	//开始 根据CPU数量确定计算线程数
 	SYSTEM_INFO info;
 	GetSystemInfo(&info);
-	int THREAD_NUMBER=info.dwNumberOfProcessors-1;
+	//int THREAD_NUMBER=info.dwNumberOfProcessors-1;
+	THREAD_NUMBER=3;
+	PAINT_THREAD_NUMBER=3;
 	if (THREAD_NUMBER>MAX_THREAD_NUMBER-1)
 		THREAD_NUMBER=MAX_THREAD_NUMBER-1;
 	if (THREAD_NUMBER<1)
@@ -247,48 +260,52 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		CDemo_ClipView_VCDlg::lines_to_draw[i].reserve(CDemo_ClipView_VCDlg::lines.size()*2/THREAD_NUMBER);
 		CDemo_ClipView_VCDlg::circles_to_draw[i].reserve(CDemo_ClipView_VCDlg::circles.size()*2/THREAD_NUMBER);
 	}
-	CDemo_ClipView_VCDlg::lines_drawing.reserve(CDemo_ClipView_VCDlg::lines.size()*2/THREAD_NUMBER);
-	CDemo_ClipView_VCDlg::circles_drawing.reserve(CDemo_ClipView_VCDlg::lines.size()*2/THREAD_NUMBER);
+	for (int i=0;i<PAINT_THREAD_NUMBER;i++)
+	{
+		CDemo_ClipView_VCDlg::lines_drawing[i].reserve(CDemo_ClipView_VCDlg::lines.size()*2/THREAD_NUMBER);
+		CDemo_ClipView_VCDlg::circles_drawing[i].reserve(CDemo_ClipView_VCDlg::circles.size()*2/THREAD_NUMBER);
+	}
 	//结束 保留足够的空间，以免之后空间不够时发生内存拷贝
 
 	//开始 初始化临界资源
 	for (int i=0;i<THREAD_NUMBER;i++)
 		InitializeCriticalSection(&CDemo_ClipView_VCDlg::critical_sections[i]);
-	for (int i=0;i<2;i++)
-		InitializeCriticalSection(&CDemo_ClipView_VCDlg::critical_circle_number[i]);
-	for (int i=0;i<3;i++)
-		InitializeCriticalSection(&CDemo_ClipView_VCDlg::critical_line_number[i]);
 	//结束 初始化临界资源
+
+	//开始 初始化各类圆和线数量的统计
+	for (int i = 0; i < 2; i++)
+		for (int j = 0; j < MAX_THREAD_NUMBER; j++)
+			circle_number[i][j]=0;
+
+	for (int i = 0; i < 3; i++)
+		for (int j = 0; j < MAX_THREAD_NUMBER; j++)
+			line_number[i][j]=0;
+	//结束 初始化各类圆和线数量的统计
 
 
 	//开始 初始化显示设备、画笔等
 	CClientDC dc(this);
 	dc.FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT, RGB(0,0,0));		//填充整个画布为黑色
 
-	COLORREF clrBoundary = RGB(255,0,0);								//边界的颜色为红色
+	COLORREF clrBoundary = RGB(255,0,0);								//边界的颜色为红色g
 	COLORREF clrLine = RGB(0,255,0);									//线的颜色为绿色
 	COLORREF clrCircle = RGB(0,0,255);									//圆的颜色为蓝色
 	
-	CPen penLine,penCircle;												
 	penLine.CreatePen(PS_SOLID, 1, clrLine);							//为画线和画圆分别生成一个Cpen
 	penCircle.CreatePen(PS_SOLID, 1, clrCircle);
 
 	DrawBoundary(boundary, clrBoundary);								//画多边形边界
 
-	CDC   MemDC;														//首先定义一个显示设备对象   
-	CBitmap   MemBitmap;												//定义一个位图对象   
-     
-	MemDC.CreateCompatibleDC(NULL);   									//随后建立与屏幕显示兼容的内存显示设备   
-	MemBitmap.CreateCompatibleBitmap(&dc,CANVAS_WIDTH,CANVAS_HEIGHT);   //下面建立一个与屏幕显示兼容的位图，至于位图的大小嘛，可以用窗口的大小   
-
-	CBitmap   *pOldBit=MemDC.SelectObject(&MemBitmap);   				//将位图选入到内存显示设备中   
-
-   	MemDC.BitBlt(0,0,CANVAS_WIDTH,CANVAS_HEIGHT,&dc,0,0,SRCCOPY);		//用dc初始化内存显示设备的像素
+	for (int i=0;i<=PAINT_THREAD_NUMBER;i++)
+	{
+		MemDC[i].CreateCompatibleDC(&dc);
+		MemBitmap[i].CreateCompatibleBitmap(&dc,CANVAS_WIDTH,CANVAS_HEIGHT);   //下面建立一个与屏幕显示兼容的位图，至于位图的大小嘛，可以用窗口的大小   
+		CBitmap  *pOldBit=MemDC[i].SelectObject(&MemBitmap[i]);   				//将位图选入到内存显示设备中   
+		MemDC[i].FillSolidRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT,RGB(1,1,1));	
+	}
 	//结束 初始化显示设备、画笔等
 
 
-	HANDLE hThread[MAX_THREAD_NUMBER];									//用于存储线程句柄
-	DWORD  dwThreadID[MAX_THREAD_NUMBER];								//用于存储线程的ID
 	_param* Info = new _param[MAX_THREAD_NUMBER];						//传递给线程处理函数的参数
 
 
@@ -321,6 +338,7 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	preprocessEdgeRect(boundary);
 	//结束 对多边形边界的信息进行预处理
 
+	computeFinished=false;
      
 
 	//开始 创建多线程进行计算
@@ -328,91 +346,65 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		hThread[i] = CreateThread(NULL,0,ThreadProc2,&Info[i],0,&(dwThreadID[i]));
 	//结束 创建多线程进行计算
 
+	//开始 创建多线程进行计算
+	for (int i = 0;i<PAINT_THREAD_NUMBER;i++)
+		hThread_Paint[i] = CreateThread(NULL,0,ThreadProc_Paint,(void*)i,0,&(dwPaintThreadID[i]));
+	//结束 创建多线程进行计算
 
+	WaitForMultipleObjects(THREAD_NUMBER,hThread,true,INFINITE);					//等待计算线程完成
 
-	//开始 当线程没有全部返回时对已经计算完的线和圆进行绘制显示
-	while (WaitForMultipleObjects(THREAD_NUMBER,hThread,true,
-		THREAD_CHECK_INTERVAL)!=WAIT_OBJECT_0)								//若线程没有完全返回，则循环继续
-	{
-		if (!TEST_DRAW_ANSWER) continue;									//若不用画图，则退出本次循环
+	computeFinished=true;
 
-		//开始 画线		
-		MemDC.SelectObject(&penLine);
-		for (int i=0;i<THREAD_NUMBER;i++)
-		{			
-			if (lines_to_draw[i].size()>MINIMUM_DRAW_SIZE)					//检查是否产生了待绘数据，有足够多的话就开始绘图，以节约时间
-			{
-				EnterCriticalSection(&critical_sections[i]);				//进入对临界资源lines_to_draw[i]进行访问
-				lines_drawing.swap(lines_to_draw[i]);						//交换绘图容器（交换时为空容器）与待绘图容器
-				LeaveCriticalSection(&critical_sections[i]);				//离开对临界资源lines_to_draw[i]进行访问
-
-				//开始 对第k线程交换出来的线进行绘制
-				for (vector<Line>::iterator iter=lines_drawing.begin();
-					iter!=lines_drawing.end(); iter++)
-				{
-					//dc.MoveTo((*iter).startpoint);
-					//dc.LineTo((*iter).endpoint);
-					MemDC.MoveTo((*iter).startpoint);
-					MemDC.LineTo((*iter).endpoint);
-
-				}
-				//结束 对第k线程交换出来的线进行绘制
-				lines_drawing.clear();										//清空绘图容器
-			}
-		}
-		//结束 画线
-
-		//开始 画圆
-		MemDC.SelectObject(&penCircle);
-		for (int i=0;i<THREAD_NUMBER;i++)
-		{
-			if (circles_to_draw[i].size()>MINIMUM_DRAW_SIZE)				//检查是否产生了待绘数据，有足够多的话就开始绘图，以节约时间
-			{
-				EnterCriticalSection(&critical_sections[i]);				//进入对临界资源critical_sections[i]进行访问
-				circles_drawing.swap(circles_to_draw[i]);					//交换绘图容器（交换时为空容器）与待绘图容器
-				LeaveCriticalSection(&critical_sections[i]);				//离开对临界资源critical_sections[i]进行访问
-
-				//开始 对第k线程交换出来的圆进行绘制
-				for (vector<_arc2draw>::iterator iter=circles_drawing.begin();iter!= circles_drawing.end();iter++)
-					//dc.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
-					MemDC.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
-				//结束 对第k线程交换出来的圆进行绘制
-				circles_drawing.clear();									//清空绘图容器
-			}
-		}
-		//结束 画圆
-
-	}
-	//结束 当线程没有全部返回时对已经计算完的线和圆进行绘制显示
-
+	WaitForMultipleObjects(PAINT_THREAD_NUMBER,hThread_Paint,true,INFINITE);		//等待绘图线程完成
 
 	//开始 画剩下的线和圆弧
 	if (TEST_DRAW_ANSWER)
 	{
-		MemDC.SelectObject(&penLine);
+		MemDC[0].SelectObject(&penLine);
 		for (int i=0;i<THREAD_NUMBER;i++)
 			for (vector<Line>::iterator iter=lines_to_draw[i].begin();iter!=lines_to_draw[i].end(); iter++)
 			{
-				//dc.MoveTo((*iter).startpoint);
-				//dc.LineTo((*iter).endpoint);
-				MemDC.MoveTo((*iter).startpoint);
-				MemDC.LineTo((*iter).endpoint);
-
+				MemDC[0].MoveTo((*iter).startpoint);
+				MemDC[0].LineTo((*iter).endpoint);
 			}
 
-		MemDC.SelectObject(&penCircle);
+		MemDC[0].SelectObject(&penCircle);
 		for (int i=0;i<THREAD_NUMBER;i++)
 			for (vector<_arc2draw>::iterator iter= circles_to_draw[i].begin();iter!= circles_to_draw[i].end(); iter++)
-				//dc.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
-				MemDC.Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
-
+				MemDC[0].Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
 	}
 	//结束 画剩下的线和圆弧
 
 
-     
-	dc.BitBlt(0,0,CANVAS_WIDTH,CANVAS_HEIGHT,&MemDC,0,0,SRCCOPY);   		//将内存中的图拷贝到屏幕上进行显示   
+	//将各缓冲区的结果合到主DC中
+	for (int i=0;i<PAINT_THREAD_NUMBER;i++)
+		dc.TransparentBlt(0,0,CANVAS_WIDTH,CANVAS_HEIGHT,&MemDC[i],0,0,CANVAS_WIDTH,CANVAS_HEIGHT,RGB(1,1,1));
 
+
+	//开始 计算circle_inter_bound
+	for (int i = 0; i < THREAD_NUMBER; i++)
+		circle_inter_bound+=circle_number[1][i];
+	//结束 计算circle_inter_bound
+
+	//开始 计算circle_in_bound
+	for (int i = 0; i < THREAD_NUMBER; i++)
+		circle_in_bound+=circle_number[0][i];
+	//结束 计算circle_in_bound
+
+	//开始 计算circle_in_bound
+	for (int i = 0; i < THREAD_NUMBER; i++)
+		line_in_bound+=line_number[0][i];
+	//结束 计算circle_in_bound
+
+	//开始 计算circle_in_bound
+	for (int i = 0; i < THREAD_NUMBER; i++)
+		line_out_bound+=line_number[1][i];
+	//结束 计算circle_in_bound
+
+	//开始 计算circle_in_bound
+	for (int i = 0; i < THREAD_NUMBER; i++)
+		line_overlap_bound+=line_number[2][i];
+	//结束 计算circle_in_bound
 
 
 	//开始 计算一些数据
@@ -436,13 +428,13 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 		vector<_arc2draw>().swap(circles_to_draw[i]);
 	}
 	
-	for (int i=0;i<3;i++)
-		DeleteCriticalSection(&critical_line_number[i]);
-	for (int i=0;i<2;i++)
-		DeleteCriticalSection(&critical_circle_number[i]);
 
-	vector<Line>().swap(lines_drawing);
-	vector<_arc2draw>().swap(circles_drawing);
+	for (int i=0;i<PAINT_THREAD_NUMBER;i++)
+	{
+		vector<Line>().swap(lines_drawing[i]);
+		vector<_arc2draw>().swap(circles_drawing[i]);
+	}
+
 	vector<Line>().swap(lines);
 	vector<Circle>().swap(circles);
 	vector<BOOL>().swap(convexPoint);
@@ -468,6 +460,72 @@ void CDemo_ClipView_VCDlg::OnBnClickedBtnClip()
 	EndMonitor();
 }
 
+
+DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc_Paint(LPVOID lpParam)  
+{
+	int id=(int)lpParam;
+	bool painted=true;
+
+	while (!computeFinished || painted)								   //如果计算线程还没计算完成，或者还有数据没画完，继续循环
+	{
+		painted=false;
+		MemDC[id].SelectObject(&penLine);
+		if (lines_to_draw[id].size()>MINIMUM_DRAW_SIZE)
+		{
+			EnterCriticalSection(&critical_sections[id]);				//进入对临界资源lines_to_draw[i]进行访问
+			lines_drawing[id].swap(lines_to_draw[id]);					//交换绘图容器（交换时为空容器）与待绘图容器
+			LeaveCriticalSection(&critical_sections[id]);				//离开对临界资源lines_to_draw[i]进行访问
+				
+			painted=true;
+			//开始 对第k线程交换出来的线进行绘制
+			for (vector<Line>::iterator iter=lines_drawing[id].begin();
+				iter!=lines_drawing[id].end(); iter++)
+			{
+				MemDC[id].MoveTo((*iter).startpoint);
+				MemDC[id].LineTo((*iter).endpoint);
+			}
+			//结束 对第k线程交换出来的线进行绘制
+			lines_drawing[id].clear();										//清空绘图容器
+		}
+		//结束 画线
+
+		//开始 画圆
+		MemDC[id].SelectObject(&penCircle);
+
+		if (circles_to_draw[id].size()>MINIMUM_DRAW_SIZE)				//检查是否产生了待绘数据，有足够多的话就开始绘图，以节约时间
+		{
+			EnterCriticalSection(&critical_sections[id]);				//进入对临界资源critical_sections[i]进行访问
+			circles_drawing[id].swap(circles_to_draw[id]);					//交换绘图容器（交换时为空容器）与待绘图容器
+			LeaveCriticalSection(&critical_sections[id]);				//离开对临界资源critical_sections[i]进行访问
+			painted=true;
+			//开始 对第k线程交换出来的圆进行绘制
+			for (vector<_arc2draw>::iterator iter=circles_drawing[id].begin();iter!= circles_drawing[id].end();iter++)
+				MemDC[id].Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
+			//结束 对第k线程交换出来的圆进行绘制
+			circles_drawing[id].clear();									//清空绘图容器
+		}
+
+		if (!painted) Sleep(40);
+
+	}
+
+	//开始 画剩余的数据
+	for (vector<Line>::iterator iter=lines_to_draw[id].begin();
+		iter!=lines_to_draw[id].end(); iter++)
+	{
+		MemDC[id].MoveTo((*iter).startpoint);
+		MemDC[id].LineTo((*iter).endpoint);
+	}
+	lines_to_draw[id].clear();
+
+	for (vector<_arc2draw>::iterator iter=circles_to_draw[id].begin();iter!= circles_to_draw[id].end();iter++)
+		MemDC[id].Arc(&((*iter).rect),(*iter).start_point,(*iter).end_point);
+	circles_to_draw[id].clear();
+	//结束 画剩余的数据
+
+	return 0;
+}
+
 /*
 *功能：对部分线和圆进行求交计算的线程函数
 *参数：传递给每个线程的待处理的线和圆的容器
@@ -481,9 +539,9 @@ DWORD WINAPI CDemo_ClipView_VCDlg::ThreadProc2(LPVOID lpParam)
 	//开始 进行线的裁剪
 	if (TEST_LINES)                                                       
 	{
-		//if (isConvexPoly)
-		//	dealConvex(Info->thread_lines,Info->boundary,Info->i);
-		//else
+		if (isConvexPoly)
+			dealConvex(Info->thread_lines,Info->boundary,Info->i);
+		else
 			dealConcave(Info->thread_lines,Info->boundary,Info->i);
 
 	}
@@ -696,9 +754,7 @@ void CDemo_ClipView_VCDlg::dealConvex(vector<Line>& lines,Boundary& boundary,int
 		bool overlap=isOverlap(lines[i]);
 		if (overlap)
 		{
-				EnterCriticalSection(&critical_line_number[2]); 
-				line_overlap_bound++;
-				LeaveCriticalSection(&critical_line_number[2]); 
+			line_number[2][threadNumber]++;
 		}
 		int size=boundary.vertexs.size()-1;
 		bool haveIntersect=false;
@@ -724,17 +780,12 @@ void CDemo_ClipView_VCDlg::dealConvex(vector<Line>& lines,Boundary& boundary,int
 				
 				if (!overlap)
 				{
-					EnterCriticalSection(&critical_line_number[0]); 
-					line_in_bound++;
-					LeaveCriticalSection(&critical_line_number[0]); 
+					line_number[0][threadNumber]++;
 				}
 			}
 			else if (!overlap)
-
 			{
-				EnterCriticalSection(&critical_line_number[1]); 
-				line_out_bound++;
-				LeaveCriticalSection(&critical_line_number[1]); 
+				line_number[1][threadNumber]++;
 			}
 			continue;
 		}
@@ -984,8 +1035,6 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,in
 		r.left=min(lines[i].startpoint.x,lines[i].endpoint.x);
 		r.right=max(lines[i].startpoint.x,lines[i].endpoint.x);
 
-
-
 		intersectPoint.clear();													//将线段起点当作入点放在首位
 		IntersectPoint ip1;
 		ip1.isIntoPoly=true;
@@ -1048,9 +1097,7 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,in
 		bool overlap=isOverlap(lines[i]);
 		if (overlap)
 		{
-				EnterCriticalSection(&critical_line_number[2]); 
-				line_overlap_bound++;
-				LeaveCriticalSection(&critical_line_number[2]); 
+			line_number[2][threadNumber]++;
 		}
 
 		//开始 没有交点的情况
@@ -1067,17 +1114,12 @@ void CDemo_ClipView_VCDlg::dealConcave(vector<Line>& lines,Boundary& boundary,in
 				
 				if (!overlap)
 				{
-					EnterCriticalSection(&critical_line_number[0]); 
-					line_in_bound++;
-					LeaveCriticalSection(&critical_line_number[0]); 
+					line_number[0][threadNumber]++;
 				}
 			}
 			else if (!overlap)
-
 			{
-				EnterCriticalSection(&critical_line_number[1]); 
-				line_out_bound++;
-				LeaveCriticalSection(&critical_line_number[1]); 
+				line_number[1][threadNumber]++;
 			}
 			continue;
 		}
@@ -1170,7 +1212,9 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 {
 
 	for(unsigned int i = 0;i<circles.size();i++){									//再次开始遍历每一个圆
+		
 		vector<XPoint> point_Array;													//用于存储每个圆与多边形窗口的交点
+		point_Array.reserve(20);
 		getInterpointArray(point_Array,i,circles);									//获得存储交点的容器
 
 		//开始 讨论没有交点以及相切的情况
@@ -1178,39 +1222,23 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 		{
 			if (point_Array.size()==1)
 			{
-				EnterCriticalSection(&critical_circle_number[1]);  
-				circle_inter_bound++;
-				LeaveCriticalSection(&critical_circle_number[1]);
+				circle_number[1][threadNumber]++;
 			}
 			XPoint mm;
 			mm.x = circles[i].center.x;
 			mm.y = circles[i].center.y;
 			bool inBoundary = isPointInBoundary(mm);								//圆心若在多边形内
-			/*if (inBoundary==false&&point_Array.size()==0)
-			{
-				EnterCriticalSection(&critical_circle_number[1]);  
-				circle_inter_bound++;
-				LeaveCriticalSection(&critical_circle_number[1]);
-			}*/
 			if (inBoundary==true)
 			{
 				long _x = boundary.vertexs[0].x-circles[i].center.x;
 				long _y = boundary.vertexs[0].y-circles[i].center.y;
 				bool t = (_x*_x+_y*_y)>(circles[i].radius*circles[i].radius);
-				/*if (t == false && point_Array.size()==0)
-				{
-					EnterCriticalSection(&critical_circle_number[1]);  
-					circle_inter_bound++;
-				LeaveCriticalSection(&critical_circle_number[1]);
-				}*/
 				
 				if (t==true)														//若圆的半径比较小
 				{
 					if (point_Array.size()==0)
 					{
-						EnterCriticalSection(&critical_circle_number[0]);  
-						circle_in_bound++;
-						LeaveCriticalSection(&critical_circle_number[0]);
+						circle_number[0][threadNumber]++;
 					}
 					//开始 画整个圆
 					CRect rect(circles[i].center.x - circles[i].radius,circles[i].center.y - 
@@ -1219,8 +1247,6 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 					CPoint start_point,end_point;
 					start_point.x = 0; start_point.y = 0;
 					end_point.x = 0; end_point.y = 0;
-					/*CClientDC dc(dlg);
-					dc.Arc(&rect, start_point, end_point);*/
 					struct _arc2draw arc2draw ;
 					arc2draw.rect = rect;
 					arc2draw.start_point = start_point;
@@ -1238,9 +1264,7 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 		//开始 讨论一般的情况
 		else if (point_Array.size()>1)
 		{
-			EnterCriticalSection(&critical_circle_number[1]);  
-			circle_inter_bound++;
-			LeaveCriticalSection(&critical_circle_number[1]);
+			circle_number[1][threadNumber]++;
 
 			vector<XPoint>::iterator pos;
 			point_Array.push_back(point_Array[0]);									//为了便于讨论和计算，在整个交点容器的最后加入第一个交点
@@ -1333,8 +1357,8 @@ void  CDemo_ClipView_VCDlg::forCircleRun(vector<Circle>& circles,Boundary& bound
 */
 double CDemo_ClipView_VCDlg::getAngle(double x1,double x2,double y1,double y2,double r)
 {
-	double cos = (double)(x1-x2)/(double)r;
-	double sin = (double)(y1-y2)/(double)r;
+	double cos = (x1-x2)/r;
+	double sin = (y1-y2)/r;
 	if (sin>0)
 	{
 		double a = acos(cos);
@@ -1591,13 +1615,9 @@ bool CDemo_ClipView_VCDlg::isPointInBoundary(XPoint& point)
 
 	
 	if(interNum%2!=0)
-	{
 		return true;												//交点为奇数，则点在多边形内
-	}
 	else
-	{
 		return false;												//交点为偶数，则点在多边形外
-	}
 
 }
 
@@ -1666,8 +1686,8 @@ void CDemo_ClipView_VCDlg::getInterpointArray(vector<XPoint>& point_Array,int ci
 		}
 		else if(key > 0)
 		{
-			double t1 = (double)((-B+sqrt(key))/(2*A));
-			double t2 = (double)((-B-sqrt(key))/(2*A));
+			double t1 = (double)((-B+sqrt((double)key))/(2*A));
+			double t2 = (double)((-B-sqrt((double)key))/(2*A));
 			if (t1>t2)
 			{
 				double tmp = t2;
@@ -1705,6 +1725,8 @@ void CDemo_ClipView_VCDlg::getInterpointArray(vector<XPoint>& point_Array,int ci
 		//开始 将所有的交点按照顺时针排序
 		vector<XPoint> y_up_0;
 		vector<XPoint> y_down_0;
+		y_up_0.reserve(point_Array.size());
+		y_down_0.reserve(point_Array.size());
 		for (int i = 0; i < point_Array.size(); i++)
 		{
 			if (point_Array[i].y <= circle2[circle_num].center.y)

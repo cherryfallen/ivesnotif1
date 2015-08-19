@@ -13,7 +13,6 @@ using std::vector;
 #include "afxwin.h"
 #include <algorithm>
 #pragma comment(lib,"psapi.lib")
-//#include "precise.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -29,11 +28,11 @@ using std::vector;
 #define TESTDATA_XML1  "TestData1.xml"
 #define TESTDATA_XML2  "TestData2.xml"
 
-//如果为0，将不载入也不处理，以方便测试性能
+//是否测试某一类型。如果为0，将不载入也不处理该类型，以方便测试性能
 #define TEST_LINES 1
 #define TEST_CIRCLES 1
 
-//是否绘出初始数据和裁剪结果，使用0来方便测试
+//是否绘出初始数据和裁剪结果数据。如果为0，将不绘出该数据，以方便测试性能
 #define TEST_DRAW_INITIAL 1
 #define TEST_DRAW_ANSWER 1
 
@@ -143,6 +142,7 @@ public:
 	void DrawCircle(Circle circle, COLORREF clr);
 	void DrawBoundary(Boundary boundary, COLORREF clr);
 	static DWORD WINAPI ThreadProc2(LPVOID lpParam);
+	static DWORD WINAPI ThreadProc_Paint(LPVOID lpParam);
 
 	static const int INTIALIZE=0;
 
@@ -159,19 +159,26 @@ public:
 	//用于存储需要画的线的全局变量的容器
 	static vector<Line> lines_to_draw[MAX_THREAD_NUMBER];			//用于存储所有要画的线
 	static vector<_arc2draw> circles_to_draw[MAX_THREAD_NUMBER];    //用于存储所有要画的弧线
-	static vector<Line> lines_drawing;								//用于存储正在画的线
-	static vector<_arc2draw> circles_drawing;						//用于存储正在画的圆
+	static vector<Line> lines_drawing[MAX_THREAD_NUMBER];			//用于存储正在画的线
+	static vector<_arc2draw> circles_drawing[MAX_THREAD_NUMBER];	//用于存储正在画的圆
 
+	static CDC MemDC[MAX_THREAD_NUMBER];							//多重缓冲区
+	static CBitmap MemBitmap[MAX_THREAD_NUMBER];
+	static bool computeFinished;									//标记计算是否完成
+	static CPen penCircle,penLine;
 	static CRITICAL_SECTION critical_sections[MAX_THREAD_NUMBER];	//为每个线程分配一个临界区
-	static CRITICAL_SECTION critical_circle_number[2];				//为圆在多边形内部和相交个数计数创建临界区
-	static CRITICAL_SECTION critical_line_number[3];				//为线在多边形内部和相交个数计数创建临界区
-
+	static int circle_number[2][MAX_THREAD_NUMBER];					//为各类圆在每个线程中统计的数目
+	static int line_number[3][MAX_THREAD_NUMBER];					//为各类线在每个线程中统计的数目
+	static HANDLE hThread[MAX_THREAD_NUMBER];						//用于存储线程句柄
+	static HANDLE hThread_Paint[MAX_THREAD_NUMBER];					//用于存储线程句柄
+	static int THREAD_NUMBER;										//计算线程数
+	static int PAINT_THREAD_NUMBER;									//绘图线程数
 
 	static bool isConvexPoly;										//多边形的凹凸性，以选择不同的算法
 	static vector<BOOL> convexPoint;								//多边形的点的凹凸性，true为凸点
 	static vector<RECT> edgeRect;									//多边形的边的外矩形框
 	static vector<Vector> normalVector;								//多边形的边的内法向量
-  
+	
 
 	//dqc methods begins
 	static void preprocessJudgeConvexPoint(vector<BOOL>&);
